@@ -1,0 +1,12 @@
+{
+  "pleasechop.mod_name": "Please Chop",
+  "block.pleasechop.oak_lumberjack_workstation": "Oak Lumberjack Workstation",
+  "block.pleasechop.spruce_lumberjack_workstation": "Spruce Lumberjack Workstation",
+  "block.pleasechop.birch_lumberjack_workstation": "Birch Lumberjack Workstation",
+  "block.pleasechop.jungle_lumberjack_workstation": "Jungle Lumberjack Workstation",
+  "block.pleasechop.acacia_lumberjack_workstation": "Acacia Lumberjack Workstation",
+  "block.pleasechop.dark_oak_lumberjack_workstation": "Dark Oak Lumberjack Workstation",
+  "block.pleasechop.mangrove_lumberjack_workstation": "Mangrove Lumberjack Workstation",
+  "block.pleasechop.cherry_lumberjack_workstation": "Cherry Lumberjack Workstation",
+  "entity.minecraft.villager.pleasechop.lumberjack": "Lumberjack"
+}

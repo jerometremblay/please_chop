@@ -1,0 +1,7 @@
+{
+  "parent": "pleasechop:block/lumberjack_workstation_template",
+  "textures": {
+    "log_side": "minecraft:block/birch_log",
+    "log_top": "minecraft:block/birch_log_top"
+  }
+}

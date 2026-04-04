@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "minecraft:oak_log" },
+    { "item": "minecraft:iron_axe" }
+  ],
+  "result": {
+    "id": "pleasechop:oak_lumberjack_workstation",
+    "count": 1
+  }
+}

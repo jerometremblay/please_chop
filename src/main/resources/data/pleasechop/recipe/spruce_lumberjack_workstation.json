@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "minecraft:spruce_log" },
+    { "item": "minecraft:iron_axe" }
+  ],
+  "result": {
+    "id": "pleasechop:spruce_lumberjack_workstation",
+    "count": 1
+  }
+}

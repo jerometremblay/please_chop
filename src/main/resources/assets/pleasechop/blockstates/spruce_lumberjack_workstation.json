@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "pleasechop:block/spruce_lumberjack_workstation" },
+    "facing=east": { "model": "pleasechop:block/spruce_lumberjack_workstation", "y": 90 },
+    "facing=south": { "model": "pleasechop:block/spruce_lumberjack_workstation", "y": 180 },
+    "facing=west": { "model": "pleasechop:block/spruce_lumberjack_workstation", "y": 270 }
+  }
+}
