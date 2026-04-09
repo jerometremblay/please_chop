@@ -1,0 +1,32 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_spruce_log": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:spruce_log"
+          }
+        ]
+      }
+    },
+    "has_the_recipe": {
+      "trigger": "minecraft:recipe_unlocked",
+      "conditions": {
+        "recipe": "pleasechop:spruce_lumberjack_workstation"
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_the_recipe",
+      "has_spruce_log"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "pleasechop:spruce_lumberjack_workstation"
+    ]
+  }
+}

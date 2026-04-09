@@ -1,5 +1,11 @@
 package com.jerome.pleasechop.block;
 
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
+
 public enum WorkstationWoodType {
     OAK("oak", "minecraft:block/oak_log", "minecraft:block/oak_log_top"),
     SPRUCE("spruce", "minecraft:block/spruce_log", "minecraft:block/spruce_log_top"),
@@ -30,5 +36,88 @@ public enum WorkstationWoodType {
 
     public String endTexture() {
         return endTexture;
+    }
+
+    public static WorkstationWoodType fromSerializedName(String name) {
+        for (WorkstationWoodType type : values()) {
+            if (type.serializedName.equals(name)) {
+                return type;
+            }
+        }
+        return null;
+    }
+
+    public static WorkstationWoodType fromWorkstationBlock(Block block) {
+        ResourceLocation key = BuiltInRegistries.BLOCK.getKey(block);
+        if (key == null) {
+            return null;
+        }
+        String path = key.getPath();
+        for (WorkstationWoodType type : values()) {
+            if (path.equals(type.serializedName + "_lumberjack_workstation")) {
+                return type;
+            }
+        }
+        return null;
+    }
+
+    public Item logItem() {
+        return switch (this) {
+            case OAK -> Items.OAK_LOG;
+            case SPRUCE -> Items.SPRUCE_LOG;
+            case BIRCH -> Items.BIRCH_LOG;
+            case JUNGLE -> Items.JUNGLE_LOG;
+            case ACACIA -> Items.ACACIA_LOG;
+            case DARK_OAK -> Items.DARK_OAK_LOG;
+            case MANGROVE -> Items.MANGROVE_LOG;
+            case CHERRY -> Items.CHERRY_LOG;
+        };
+    }
+
+    public Item strippedLogItem() {
+        return switch (this) {
+            case OAK -> Items.STRIPPED_OAK_LOG;
+            case SPRUCE -> Items.STRIPPED_SPRUCE_LOG;
+            case BIRCH -> Items.STRIPPED_BIRCH_LOG;
+            case JUNGLE -> Items.STRIPPED_JUNGLE_LOG;
+            case ACACIA -> Items.STRIPPED_ACACIA_LOG;
+            case DARK_OAK -> Items.STRIPPED_DARK_OAK_LOG;
+            case MANGROVE -> Items.STRIPPED_MANGROVE_LOG;
+            case CHERRY -> Items.STRIPPED_CHERRY_LOG;
+        };
+    }
+
+    public Item leavesItem() {
+        return switch (this) {
+            case OAK -> Items.OAK_LEAVES;
+            case SPRUCE -> Items.SPRUCE_LEAVES;
+            case BIRCH -> Items.BIRCH_LEAVES;
+            case JUNGLE -> Items.JUNGLE_LEAVES;
+            case ACACIA -> Items.ACACIA_LEAVES;
+            case DARK_OAK -> Items.DARK_OAK_LEAVES;
+            case MANGROVE -> Items.MANGROVE_LEAVES;
+            case CHERRY -> Items.CHERRY_LEAVES;
+        };
+    }
+
+    public Item saplingItem() {
+        return switch (this) {
+            case OAK -> Items.OAK_SAPLING;
+            case SPRUCE -> Items.SPRUCE_SAPLING;
+            case BIRCH -> Items.BIRCH_SAPLING;
+            case JUNGLE -> Items.JUNGLE_SAPLING;
+            case ACACIA -> Items.ACACIA_SAPLING;
+            case DARK_OAK -> Items.DARK_OAK_SAPLING;
+            case MANGROVE -> Items.MANGROVE_PROPAGULE;
+            case CHERRY -> Items.CHERRY_SAPLING;
+        };
+    }
+
+    public Item specialResourceItem() {
+        return switch (this) {
+            case OAK -> Items.APPLE;
+            case JUNGLE -> Items.COCOA_BEANS;
+            default -> null;
+        };
     }
 }

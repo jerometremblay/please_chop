@@ -1,5 +1,6 @@
 package com.jerome.pleasechop.client;
 
+import com.jerome.pleasechop.config.PleaseChopConfig;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import com.jerome.pleasechop.block.entity.LumberjackWorkstationBlockEntity;
@@ -33,6 +34,10 @@ public final class LumberjackWorkstationRenderer implements BlockEntityRenderer<
         poseStack.scale(1.48F, 1.48F, 1.48F);
         this.itemRenderer.renderStatic(AXE_STACK, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND, packedLight, packedOverlay, poseStack, buffer, blockEntity.getLevel(), 0);
         poseStack.popPose();
+
+        if (!PleaseChopConfig.debugRenderEnabled()) {
+            return;
+        }
 
         for (BlockPos pos : blockEntity.getDebugRootBlocks()) {
             renderSingleLineBox(blockEntity, poseStack, buffer, pos, -0.10D, 1.0F, 0.45F, 0.15F);

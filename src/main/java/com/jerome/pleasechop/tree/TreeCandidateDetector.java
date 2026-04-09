@@ -59,7 +59,7 @@ public final class TreeCandidateDetector {
                     if (result.candidate() != null) {
                         candidateTrees.add(result.candidate());
                     } else if (result.rejectionReason() != null) {
-                        rejectionMessages.add(rootPos + " -> " + result.rejectionReason());
+                        rejectionMessages.add(formatPos(rootPos) + " -> " + result.rejectionReason());
                     }
                 });
 
@@ -81,26 +81,29 @@ public final class TreeCandidateDetector {
     private static AnalysisResult analyzeCandidate(ServerLevel level, BlockPos rootPos) {
         Block rootBlock = level.getBlockState(rootPos).getBlock();
         WideTreeType wideTreeType = resolveWideTreeType(rootBlock);
-        AnalysisResult wideFailure = null;
         if (wideTreeType != null) {
             AnalysisResult wideResult = analyzeWideCandidate(level, rootPos, rootBlock, wideTreeType);
             if (wideResult.candidate() != null) {
                 return wideResult;
             }
-            wideFailure = wideResult;
+            if (!shouldFallbackToSingleTree(wideTreeType, wideResult.rejectionReason())) {
+                return AnalysisResult.reject("block=" + BuiltInRegistries.BLOCK.getKey(rootBlock) + ", wide=" + wideResult.rejectionReason());
+            }
         }
 
         AnalysisResult singleResult = analyzeSingleTreeCandidate(level, rootPos, rootBlock);
-        if (wideFailure != null && singleResult.candidate() == null) {
-            return AnalysisResult.reject("block=" + BuiltInRegistries.BLOCK.getKey(rootBlock)
-                    + ", wide=" + wideFailure.rejectionReason()
-                    + ", single=" + singleResult.rejectionReason());
-        }
         if (singleResult.candidate() == null) {
             return AnalysisResult.reject("block=" + BuiltInRegistries.BLOCK.getKey(rootBlock) + ", single=" + singleResult.rejectionReason());
         }
 
         return singleResult;
+    }
+
+    private static boolean shouldFallbackToSingleTree(WideTreeType wideTreeType, String rejectionReason) {
+        if (rejectionReason == null || !rejectionReason.startsWith("invalid 2x2 wide base")) {
+            return false;
+        }
+        return wideTreeType == WideTreeType.SPRUCE || wideTreeType == WideTreeType.JUNGLE;
     }
 
     private static List<BlockPos> resolveDebugRootFootprint(ServerLevel level, BlockPos rootPos) {
@@ -130,8 +133,9 @@ public final class TreeCandidateDetector {
         if (connectedLogs.isEmpty() || connectedLogs.size() > maxLogs) {
             return AnalysisResult.reject("connected logs invalid size=" + connectedLogs.size() + " max=" + maxLogs);
         }
-        if (!validateTreeNeighbors(level, connectedLogs, rootLayer, rootBlock)) {
-            return AnalysisResult.reject("tree touches blocks other than same-species logs or leaves");
+        String neighborFailure = findInvalidTreeNeighbor(level, connectedLogs, rootLayer, rootBlock, false);
+        if (neighborFailure != null) {
+            return AnalysisResult.reject("tree touches invalid block " + neighborFailure);
         }
         if (hasForeignLogConnection(level, connectedLogs, rootBlock, rootPos)) {
             return AnalysisResult.reject("connected logs touch a different wood type");
@@ -209,8 +213,9 @@ public final class TreeCandidateDetector {
         if (connectedLogs.size() > maxLogs) {
             return AnalysisResult.reject("wide logs exceeded max after leaf bridge size=" + connectedLogs.size() + " max=" + maxLogs);
         }
-        if (!validateTreeNeighbors(level, connectedLogs, new HashSet<>(rootPositions), rootBlock)) {
-            return AnalysisResult.reject("wide tree touches blocks other than same-species logs or leaves");
+        String neighborFailure = findInvalidTreeNeighbor(level, connectedLogs, new HashSet<>(rootPositions), rootBlock, wideTreeType == WideTreeType.JUNGLE);
+        if (neighborFailure != null) {
+            return AnalysisResult.reject("wide tree touches invalid block " + neighborFailure);
         }
         if (hasForeignLogConnection(level, connectedLogs, rootBlock, rootPositions.get(0))) {
             return AnalysisResult.reject("wide logs touch a different wood type");
@@ -635,7 +640,7 @@ public final class TreeCandidateDetector {
         return false;
     }
 
-    private static boolean validateTreeNeighbors(ServerLevel level, Set<BlockPos> connectedLogs, Set<BlockPos> rootPositions, Block logBlock) {
+    private static String findInvalidTreeNeighbor(ServerLevel level, Set<BlockPos> connectedLogs, Set<BlockPos> rootPositions, Block logBlock, boolean allowVines) {
         for (BlockPos logPos : connectedLogs) {
             for (Direction direction : Direction.values()) {
                 if (direction == Direction.DOWN && rootPositions.contains(logPos)) {
@@ -654,14 +659,20 @@ public final class TreeCandidateDetector {
                 if (neighborState.canBeReplaced()) {
                     continue;
                 }
+                if (neighborState.is(BlockTags.FLOWERS)) {
+                    continue;
+                }
                 if (neighborState.is(logBlock) || neighborState.is(BlockTags.LEAVES)) {
                     continue;
                 }
-                return false;
+                if (allowVines && isVine(neighborState)) {
+                    continue;
+                }
+                return "at " + formatPos(neighbor) + " block=" + BuiltInRegistries.BLOCK.getKey(neighborState.getBlock()) + " touching log=" + formatPos(logPos) + " face=" + direction;
             }
         }
 
-        return true;
+        return null;
     }
 
     private static boolean hasForeignLogConnection(ServerLevel level, Set<BlockPos> connectedLogs, Block logBlock, BlockPos anchor) {
@@ -698,6 +709,10 @@ public final class TreeCandidateDetector {
         }
 
         return false;
+    }
+
+    private static String formatPos(BlockPos pos) {
+        return "[" + pos.getX() + " " + pos.getY() + " " + pos.getZ() + "]";
     }
 
     private static boolean touchesGround(ServerLevel level, BlockPos logPos) {
