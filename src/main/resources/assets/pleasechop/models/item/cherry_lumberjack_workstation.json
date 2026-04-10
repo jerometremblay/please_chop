@@ -1,3 +1,6 @@
 {
-  "parent": "pleasechop:block/cherry_lumberjack_workstation"
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "pleasechop:item/cherry_lumberjack_workstation"
+  }
 }

@@ -5,14 +5,18 @@ import com.jerome.pleasechop.registry.ModBlockEntities;
 import com.jerome.pleasechop.registry.ModVillagerProfessions;
 import com.jerome.pleasechop.tree.TreeCandidateDetector;
 import com.jerome.pleasechop.tree.TreeCandidateDetector.CandidateTree;
+import com.jerome.pleasechop.world.TreeReservationData;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
@@ -41,6 +45,7 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -87,9 +92,11 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     private static final int MAX_PENDING_PLANTINGS = 16;
     private static final int MAX_SCAVENGE_VISITS_PER_SITE = 2;
     private static final int PLANTING_RECOVERY_RETRY_TICKS = 100;
-    private static final int AUTONOMOUS_WORK_CHECK_INTERVAL_TICKS = 200;
+    private static final int AUTONOMOUS_WORK_CHECK_INTERVAL_TICKS = 10;
     private static final int AUTONOMOUS_WORK_START_CHANCE = 2;
     private static final int AUTONOMOUS_WORK_APPROACH_BUFFER_TICKS = 200;
+    private static final int AUTONOMOUS_REJECTION_DEBUG_COOLDOWN_TICKS = 200;
+    private static final int TREE_RESERVATION_DURATION_TICKS = 2400;
     private static final int SCAVENGE_MIN_LINGER_TICKS = 200;
     private static final int SCAVENGE_QUIET_LINGER_TICKS = 200;
     private static final int SCAVENGE_MAX_LINGER_TICKS = 800;
@@ -107,6 +114,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     private List<BlockPos> debugRootBlocks = List.of();
     private final List<RememberedDropSite> rememberedDropSites = new ArrayList<>();
     private final List<PendingPlantingSite> pendingPlantings = new ArrayList<>();
+    private final Set<String> seenAutonomousRejectionMessages = new HashSet<>();
     private ActiveJob activeJob;
     private PlantingRecoveryJob plantingRecoveryJob;
     private ScavengeJob scavengeJob;
@@ -114,6 +122,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     private boolean plantingRecoveryIdle;
     private int lastPlantingRecoveryInventorySignature;
     private int autonomousWorkCheckTicks;
+    private long lastAutonomousRejectionDebugTick;
 
     public LumberjackWorkstationBlockEntity(BlockPos pos, BlockState blockState) {
         super(ModBlockEntities.LUMBERJACK_WORKSTATION.get(), pos, blockState);
@@ -161,8 +170,20 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
             worker.getBrain().eraseMemory(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE);
         }
 
-        CandidateTree selectedTree = highlightedTrees.get(level.random.nextInt(highlightedTrees.size()));
-        activeJob = new ActiveJob(worker.getUUID(), selectedTree, findTreeStandPos(selectedTree), worker.getBrain().isActive(Activity.WORK));
+        List<CandidateTree> availableTrees = highlightedTrees.stream()
+                .filter(tree -> !isTreeReservedByOther(level, tree))
+                .toList();
+        if (availableTrees.isEmpty()) {
+            debugChat(level, "start rejected: all candidate trees are reserved");
+            return;
+        }
+
+        CandidateTree selectedTree = availableTrees.get(level.random.nextInt(availableTrees.size()));
+        if (!tryReserveTree(level, selectedTree)) {
+            debugChat(level, "start rejected: tree already reserved " + formatPos(selectedTree.rootPos()));
+            return;
+        }
+        activeJob = new ActiveJob(worker.getUUID(), selectedTree, collectChopTargets(selectedTree), findTreeStandPos(selectedTree), worker.getBrain().isActive(Activity.WORK));
         debugChat(level, "started work job for " + worker.getName().getString() + " tree=" + formatPos(selectedTree.rootPos()) + " stand=" + formatPos(activeJob.treeStandPos()));
         setChanged();
     }
@@ -232,6 +253,8 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
             return;
         }
 
+        refreshTreeReservation(level);
+
         if (worker.isTrading()) {
             stopWorkerMovement(worker);
             return;
@@ -284,17 +307,42 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
             return;
         }
 
-        List<CandidateTree> candidates = TreeCandidateDetector.findCandidateTrees(level, worldPosition).stream()
+        TreeCandidateDetector.DetectionScan scan = TreeCandidateDetector.scanDebug(level, worldPosition);
+        List<CandidateTree> candidates = scan.candidateTrees().stream()
+                .filter(tree -> !isTreeReservedByOther(level, tree))
                 .filter(tree -> estimateAutonomousWorkDuration(tree, worker) <= remainingWorkTicks)
                 .toList();
         if (candidates.isEmpty()) {
+            debugAutonomousRejections(level, scan);
             return;
         }
 
         CandidateTree selectedTree = candidates.get(level.random.nextInt(candidates.size()));
-        activeJob = new ActiveJob(worker.getUUID(), selectedTree, findTreeStandPos(selectedTree), true);
+        if (!tryReserveTree(level, selectedTree)) {
+            return;
+        }
+        seenAutonomousRejectionMessages.clear();
+        activeJob = new ActiveJob(worker.getUUID(), selectedTree, collectChopTargets(selectedTree), findTreeStandPos(selectedTree), true);
         debugChat(level, "autonomous start for " + worker.getName().getString() + " tree=" + formatPos(selectedTree.rootPos()) + " stand=" + formatPos(activeJob.treeStandPos()));
         setChanged();
+    }
+
+    private void debugAutonomousRejections(ServerLevel level, TreeCandidateDetector.DetectionScan scan) {
+        if (!PleaseChopConfig.debugChatEnabled()) {
+            return;
+        }
+        long gameTime = level.getGameTime();
+        if (gameTime - lastAutonomousRejectionDebugTick < AUTONOMOUS_REJECTION_DEBUG_COOLDOWN_TICKS) {
+            return;
+        }
+        List<String> newMessages = scan.rejectionMessages().stream()
+                .filter(seenAutonomousRejectionMessages::add)
+                .toList();
+        if (newMessages.isEmpty()) {
+            return;
+        }
+        lastAutonomousRejectionDebugTick = gameTime;
+        newMessages.forEach(message -> debugChat(level, "autonomous rejected root " + message));
     }
 
     private void tickScavengeServer(ServerLevel level) {
@@ -405,7 +453,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
         stopWorkerMovement(worker);
 
         BlockPos nextLogPos = activeJob.peekNextLog();
-        while (nextLogPos != null && !level.getBlockState(nextLogPos).is(BlockTags.LOGS)) {
+        while (nextLogPos != null && !isChopTargetBlock(level.getBlockState(nextLogPos))) {
             activeJob.popNextLog();
             nextLogPos = activeJob.peekNextLog();
         }
@@ -424,7 +472,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
             worker.swing(InteractionHand.MAIN_HAND);
             level.destroyBlock(nextLogPos, true, worker, 512);
             activeJob.popNextLog();
-            debugChat(level, "chopped log " + nextLogPos + " remaining=" + activeJob.remainingLogCount());
+            debugChat(level, "chopped block " + formatPos(nextLogPos) + " remaining=" + activeJob.remainingLogCount());
             setChanged();
         }
     }
@@ -485,7 +533,10 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
 
         if (activeJob.shouldFinishLingering(
                 hasVisibleStuckTreeDrop(level, worker, activeJob.tree()),
-                haveTrackedLeavesSettled(level, activeJob.tree()))) {
+                haveTrackedLeavesSettled(level, activeJob.tree()),
+                getMinLingerTicks(worker),
+                getQuietLingerTicks(worker),
+                getMaxLingerTicks(worker))) {
             worker.getNavigation().stop();
             activeJob.beginReturning();
             debugChat(level, "transition LINGERING_UNDER_TREE -> RETURNING_TO_WORKSTATION");
@@ -690,8 +741,8 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
 
         scavengeJob = new ScavengeJob(worker.getUUID(), site.pos());
         site.cooldownTicks = SCAVENGE_SITE_RECHECK_COOLDOWN_TICKS;
-        debugChat(level, "selected scavenge site " + site.pos() + " age=" + site.ageTicks + " visitedInSweep=" + site.visitedInSweep);
-        debugChat(level, "transition IDLE -> SCAVENGE MOVING_TO_SITE " + site.pos());
+        debugChat(level, "selected scavenge site " + formatPos(site.pos()) + " age=" + site.ageTicks + " visitedInSweep=" + site.visitedInSweep);
+        debugChat(level, "transition IDLE -> SCAVENGE MOVING_TO_SITE " + formatPos(site.pos()));
         setChanged();
     }
 
@@ -701,7 +752,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
         if (worker.distanceToSqr(Vec3.atCenterOf(standPos)) <= TREE_REACH_DISTANCE_SQR) {
             worker.getNavigation().stop();
             scavengeJob.beginCollecting();
-            debugChat(level, "transition SCAVENGE MOVING_TO_SITE -> COLLECTING at " + scavengeJob.sitePos());
+            debugChat(level, "transition SCAVENGE MOVING_TO_SITE -> COLLECTING at " + formatPos(scavengeJob.sitePos()));
             setChanged();
             return;
         }
@@ -821,6 +872,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     }
 
     private void stopActiveJob(Villager worker) {
+        releaseTreeReservation();
         if (worker != null) {
             stopWorkerMovement(worker);
             worker.getBrain().eraseMemory(MemoryModuleType.LOOK_TARGET);
@@ -828,6 +880,28 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
 
         activeJob = null;
         setChanged();
+    }
+
+    private boolean tryReserveTree(ServerLevel level, CandidateTree tree) {
+        return TreeReservationData.get(level).tryReserve(tree, worldPosition, level.getGameTime(), TREE_RESERVATION_DURATION_TICKS);
+    }
+
+    private boolean isTreeReservedByOther(ServerLevel level, CandidateTree tree) {
+        return TreeReservationData.get(level).isReservedByOther(tree, worldPosition, level.getGameTime());
+    }
+
+    private void refreshTreeReservation(ServerLevel level) {
+        if (activeJob == null) {
+            return;
+        }
+        TreeReservationData.get(level).refresh(activeJob.tree(), worldPosition, level.getGameTime(), TREE_RESERVATION_DURATION_TICKS);
+    }
+
+    private void releaseTreeReservation() {
+        if (!(level instanceof ServerLevel serverLevel) || activeJob == null) {
+            return;
+        }
+        TreeReservationData.get(serverLevel).release(activeJob.tree(), worldPosition);
     }
 
     private void stopScavengeJob(Villager worker) {
@@ -1007,18 +1081,40 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
 
         BlockPos nextFeetPos = new BlockPos(workerPos.getX() + stepX, workerPos.getY(), workerPos.getZ() + stepZ);
         BlockPos nextHeadPos = nextFeetPos.above();
-        breakLeafBlock(serverLevel, worker, nextFeetPos);
-        breakLeafBlock(serverLevel, worker, nextHeadPos);
+        breakTreeObstacleBlock(serverLevel, worker, nextFeetPos);
+        breakTreeObstacleBlock(serverLevel, worker, nextHeadPos);
     }
 
-    private void breakLeafBlock(ServerLevel level, Villager worker, BlockPos pos) {
-        if (!level.getBlockState(pos).is(BlockTags.LEAVES)) {
+    private void breakTreeObstacleBlock(ServerLevel level, Villager worker, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        if (!state.is(BlockTags.LEAVES) && !isBeehive(state)) {
             return;
         }
 
         worker.getLookControl().setLookAt(Vec3.atCenterOf(pos));
         worker.swing(InteractionHand.MAIN_HAND);
         level.destroyBlock(pos, true, worker, 512);
+    }
+
+    private boolean isBeehive(BlockState state) {
+        return state.is(Blocks.BEE_NEST) || state.is(Blocks.BEEHIVE);
+    }
+
+    private boolean isChopTargetBlock(BlockState state) {
+        return state.is(BlockTags.LOGS) || isBeehive(state);
+    }
+
+    private List<BlockPos> collectChopTargets(CandidateTree tree) {
+        LinkedHashSet<BlockPos> targets = new LinkedHashSet<>(tree.logPositions());
+        tree.logPositions().stream()
+                .flatMap(logPos -> java.util.Arrays.stream(Direction.values()).map(logPos::relative))
+                .filter(candidate -> isBeehive(level.getBlockState(candidate)))
+                .distinct()
+                .sorted(Comparator.<BlockPos>comparingInt(BlockPos::getY).reversed()
+                        .thenComparingInt(BlockPos::getX)
+                        .thenComparingInt(BlockPos::getZ))
+                .forEach(targets::add);
+        return List.copyOf(targets);
     }
 
     private Optional<Villager> findAssignedWorker(ServerLevel level) {
@@ -1278,7 +1374,11 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
         }
 
         BlockState blockState = blockItem.getBlock().defaultBlockState();
-        return blockState.is(BlockTags.LOGS) || blockState.is(BlockTags.LEAVES) || blockState.is(BlockTags.SAPLINGS);
+        return blockState.is(BlockTags.LOGS)
+                || blockState.is(BlockTags.LEAVES)
+                || blockState.is(BlockTags.SAPLINGS)
+                || blockState.is(Blocks.BEE_NEST)
+                || blockState.is(Blocks.BEEHIVE);
     }
 
     private void tickSleepCleanup(Villager worker) {
@@ -1324,6 +1424,36 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
             case 3 -> JOURNEYMAN_CHOP_INTERVAL_TICKS;
             case 4 -> EXPERT_CHOP_INTERVAL_TICKS;
             default -> MASTER_CHOP_INTERVAL_TICKS;
+        };
+    }
+
+    private int getMinLingerTicks(Villager worker) {
+        return switch (worker.getVillagerData().getLevel()) {
+            case 1 -> MIN_LINGER_TICKS;
+            case 2 -> 360;
+            case 3 -> 320;
+            case 4 -> 280;
+            default -> 240;
+        };
+    }
+
+    private int getQuietLingerTicks(Villager worker) {
+        return switch (worker.getVillagerData().getLevel()) {
+            case 1 -> QUIET_LINGER_TICKS;
+            case 2 -> 360;
+            case 3 -> 320;
+            case 4 -> 280;
+            default -> 240;
+        };
+    }
+
+    private int getMaxLingerTicks(Villager worker) {
+        return switch (worker.getVillagerData().getLevel()) {
+            case 1 -> MAX_LINGER_TICKS;
+            case 2 -> 2800;
+            case 3 -> 2400;
+            case 4 -> 2000;
+            default -> 1600;
         };
     }
 
@@ -1971,11 +2101,11 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
         private boolean movementCommandIssued;
         private final Map<UUID, Integer> failedItems;
 
-        private ActiveJob(UUID workerId, CandidateTree tree, BlockPos treeStandPos, boolean endsWithWorkShift) {
+        private ActiveJob(UUID workerId, CandidateTree tree, List<BlockPos> chopTargets, BlockPos treeStandPos, boolean endsWithWorkShift) {
             this.workerId = workerId;
             this.tree = tree;
             this.treeStandPos = treeStandPos;
-            this.remainingLogs = new ArrayDeque<>(tree.logPositions());
+            this.remainingLogs = new ArrayDeque<>(chopTargets);
             this.endsWithWorkShift = endsWithWorkShift;
             this.phase = WorkPhase.MOVING_TO_TREE;
             this.failedItems = new HashMap<>();
@@ -2094,7 +2224,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
             quietTicks = 0;
         }
 
-        private boolean shouldFinishLingering(boolean hasVisibleStuckTreeDrop, boolean trackedLeavesSettled) {
+        private boolean shouldFinishLingering(boolean hasVisibleStuckTreeDrop, boolean trackedLeavesSettled, int minLingerTicks, int quietLingerTicks, int maxLingerTicks) {
             if (!trackedLeavesSettled) {
                 return false;
             }
@@ -2103,11 +2233,11 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
                 return false;
             }
 
-            if (lingerTicks >= MAX_LINGER_TICKS) {
+            if (lingerTicks >= maxLingerTicks) {
                 return true;
             }
 
-            return lingerTicks >= MIN_LINGER_TICKS && quietTicks >= QUIET_LINGER_TICKS;
+            return lingerTicks >= minLingerTicks && quietTicks >= quietLingerTicks;
         }
 
         private boolean hasReachedLeafWaitCap() {

@@ -63,15 +63,9 @@ public final class LumberjackTradeManager {
 
     private static WorkstationWoodType getOrResolveSpecialization(Villager villager) {
         CompoundTag data = villager.getPersistentData();
-        if (data.contains(SPECIALIZATION_TAG)) {
-            WorkstationWoodType saved = WorkstationWoodType.fromSerializedName(data.getString(SPECIALIZATION_TAG));
-            if (saved != null) {
-                return saved;
-            }
-        }
-
         Optional<GlobalPos> jobSite = villager.getBrain().getMemory(MemoryModuleType.JOB_SITE);
         if (jobSite.isEmpty()) {
+            data.remove(SPECIALIZATION_TAG);
             return null;
         }
 
@@ -87,9 +81,17 @@ public final class LumberjackTradeManager {
 
         WorkstationWoodType resolved = WorkstationWoodType.fromWorkstationBlock(jobSiteLevel.getBlockState(jobSite.get().pos()).getBlock());
         if (resolved != null) {
-            data.putString(SPECIALIZATION_TAG, resolved.serializedName());
+            WorkstationWoodType saved = data.contains(SPECIALIZATION_TAG)
+                    ? WorkstationWoodType.fromSerializedName(data.getString(SPECIALIZATION_TAG))
+                    : null;
+            if (saved != resolved) {
+                data.putString(SPECIALIZATION_TAG, resolved.serializedName());
+            }
+            return resolved;
         }
-        return resolved;
+
+        data.remove(SPECIALIZATION_TAG);
+        return null;
     }
 
     @FunctionalInterface

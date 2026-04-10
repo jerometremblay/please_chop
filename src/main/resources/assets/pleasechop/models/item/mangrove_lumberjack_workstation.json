@@ -1,3 +1,6 @@
 {
-  "parent": "pleasechop:block/mangrove_lumberjack_workstation"
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "pleasechop:item/mangrove_lumberjack_workstation"
+  }
 }

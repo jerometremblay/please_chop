@@ -12,6 +12,7 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.client.renderer.entity.ItemRenderer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemDisplayContext;
@@ -27,12 +28,12 @@ public final class LumberjackWorkstationRenderer implements BlockEntityRenderer<
     @Override
     public void render(LumberjackWorkstationBlockEntity blockEntity, float partialTick, PoseStack poseStack, MultiBufferSource buffer, int packedLight, int packedOverlay) {
         poseStack.pushPose();
-        poseStack.translate(0.5F, 0.9F, 0.5F);
-        poseStack.mulPose(Axis.YP.rotationDegrees(0.0F));
-        poseStack.mulPose(Axis.ZP.rotationDegrees(-8.0F));
-        poseStack.mulPose(Axis.XP.rotationDegrees(-90.0F));
-        poseStack.scale(1.48F, 1.48F, 1.48F);
-        this.itemRenderer.renderStatic(AXE_STACK, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND, packedLight, packedOverlay, poseStack, buffer, blockEntity.getLevel(), 0);
+        poseStack.translate(0.5F, 0.98F, 0.5F);
+        poseStack.mulPose(Axis.YP.rotationDegrees(42.0F));
+        poseStack.mulPose(Axis.ZP.rotationDegrees(-10.0F));
+        poseStack.mulPose(Axis.XP.rotationDegrees(-128.0F));
+        poseStack.scale(1.22F, 1.22F, 1.22F);
+        this.itemRenderer.renderStatic(AXE_STACK, ItemDisplayContext.FIXED, packedLight, packedOverlay, poseStack, buffer, blockEntity.getLevel(), 0);
         poseStack.popPose();
 
         if (!PleaseChopConfig.debugRenderEnabled()) {
@@ -79,6 +80,42 @@ public final class LumberjackWorkstationRenderer implements BlockEntityRenderer<
     @Override
     public int getViewDistance() {
         return 96;
+    }
+
+    @Override
+    public boolean shouldRenderOffScreen(LumberjackWorkstationBlockEntity blockEntity) {
+        return PleaseChopConfig.debugRenderEnabled();
+    }
+
+    @Override
+    public boolean shouldRender(LumberjackWorkstationBlockEntity blockEntity, Vec3 cameraPos) {
+        if (BlockEntityRenderer.super.shouldRender(blockEntity, cameraPos)) {
+            return true;
+        }
+        if (!PleaseChopConfig.debugRenderEnabled()) {
+            return false;
+        }
+
+        double maxDistanceSqr = cameraPos.distanceToSqr(Vec3.atCenterOf(blockEntity.getBlockPos()));
+        for (BlockPos pos : blockEntity.getDebugRootBlocks()) {
+            maxDistanceSqr = Math.min(maxDistanceSqr, cameraPos.distanceToSqr(Vec3.atCenterOf(pos)));
+        }
+        for (BlockPos pos : blockEntity.getPendingPlantingRootBlocks()) {
+            maxDistanceSqr = Math.min(maxDistanceSqr, cameraPos.distanceToSqr(Vec3.atCenterOf(pos)));
+        }
+        for (CandidateTree tree : blockEntity.getHighlightedTrees()) {
+            for (BlockPos pos : tree.logPositions()) {
+                maxDistanceSqr = Math.min(maxDistanceSqr, cameraPos.distanceToSqr(Vec3.atCenterOf(pos)));
+            }
+            for (BlockPos pos : tree.rootPositions()) {
+                maxDistanceSqr = Math.min(maxDistanceSqr, cameraPos.distanceToSqr(Vec3.atCenterOf(pos)));
+            }
+        }
+        BlockPos activeStandPos = blockEntity.getActiveTreeStandPos();
+        if (activeStandPos != null) {
+            maxDistanceSqr = Math.min(maxDistanceSqr, cameraPos.distanceToSqr(Vec3.atCenterOf(activeStandPos)));
+        }
+        return maxDistanceSqr < (double) (getViewDistance() * getViewDistance());
     }
 
     private static void renderSingleLineBox(LumberjackWorkstationBlockEntity blockEntity, PoseStack poseStack, MultiBufferSource buffer, BlockPos pos, double inset, float red, float green, float blue) {

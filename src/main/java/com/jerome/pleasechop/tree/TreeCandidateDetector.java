@@ -314,6 +314,7 @@ public final class TreeCandidateDetector {
                     .filter(candidate -> isWithinTreeBounds(candidate, anchor, 2))
                     .filter(candidate -> level.getBlockState(candidate).is(logBlock))
                     .filter(candidate -> hasOnlyLeafBridge(level, candidate, expandedLogs, expectedLeafBlock))
+                    .filter(candidate -> !isGroundedLeafBridgedComponent(level, candidate, expandedLogs, logBlock, anchor))
                     .distinct()
                     .sorted(Comparator.<BlockPos>comparingInt(BlockPos::getY)
                             .thenComparingInt(BlockPos::getX)
@@ -604,6 +605,44 @@ public final class TreeCandidateDetector {
         return touchesConnectedLeaf;
     }
 
+    private static boolean isGroundedLeafBridgedComponent(ServerLevel level, BlockPos startPos, Set<BlockPos> connectedLogs, Block logBlock, BlockPos anchor) {
+        Set<BlockPos> visited = new HashSet<>();
+        ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+        visited.add(startPos);
+        queue.add(startPos);
+
+        while (!queue.isEmpty()) {
+            BlockPos current = queue.removeFirst();
+            if (touchesGround(level, current)) {
+                return true;
+            }
+
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        if (dx == 0 && dy == 0 && dz == 0) {
+                            continue;
+                        }
+
+                        BlockPos next = current.offset(dx, dy, dz);
+                        if (visited.contains(next) || connectedLogs.contains(next) || !isWithinGroundConnectionBounds(next, anchor)) {
+                            continue;
+                        }
+
+                        if (!level.getBlockState(next).is(logBlock)) {
+                            continue;
+                        }
+
+                        visited.add(next);
+                        queue.addLast(next);
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
     private static boolean hasGroundConnectionOutsideRoot(ServerLevel level, Set<BlockPos> connectedLogs, Set<BlockPos> rootPositions, Block logBlock, BlockPos anchor) {
         Set<BlockPos> visited = new HashSet<>(connectedLogs);
         ArrayDeque<BlockPos> queue = new ArrayDeque<>(connectedLogs);
@@ -662,7 +701,7 @@ public final class TreeCandidateDetector {
                 if (neighborState.is(BlockTags.FLOWERS)) {
                     continue;
                 }
-                if (neighborState.is(logBlock) || neighborState.is(BlockTags.LEAVES)) {
+                if (neighborState.is(logBlock) || neighborState.is(BlockTags.LEAVES) || isBeehive(neighborState)) {
                     continue;
                 }
                 if (allowVines && isVine(neighborState)) {
@@ -673,6 +712,10 @@ public final class TreeCandidateDetector {
         }
 
         return null;
+    }
+
+    private static boolean isBeehive(BlockState state) {
+        return state.is(Blocks.BEE_NEST) || state.is(Blocks.BEEHIVE);
     }
 
     private static boolean hasForeignLogConnection(ServerLevel level, Set<BlockPos> connectedLogs, Block logBlock, BlockPos anchor) {

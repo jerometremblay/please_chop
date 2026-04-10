@@ -1,3 +1,6 @@
 {
-  "parent": "pleasechop:block/dark_oak_lumberjack_workstation"
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "pleasechop:item/dark_oak_lumberjack_workstation"
+  }
 }
