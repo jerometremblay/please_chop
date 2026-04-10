@@ -1,394 +1,423 @@
-# Please Chop Architecture Proposal
+# Please Chop Architecture
+
+This document describes the current architecture of `Please Chop`.
+
+It is no longer a proposal. The early scaffold and several classes originally planned here were never kept as-is. The actual implementation is intentionally narrower:
+- one workstation block entity owns the runtime
+- one tree detector builds explicit candidates
+- one world-scoped reservation map prevents double-claims
+- normal villager professions and trading stay in place
 
 ## Goals
 
-- Add one workstation block that can recruit and manage one lumberjack villager through the normal villager profession system.
-- Keep the implementation close to the existing `PleaseStore` pattern: one main block, one main block entity, explicit state, no generalized task framework.
-- Prefer deterministic tree harvesting over clever AI. The workstation should own the job state, and the villager should mostly execute movement plus a few scripted actions.
+- Keep lumberjacks inside the normal villager profession system.
+- Let the workstation own the forestry runtime instead of building a generic task framework.
+- Prefer explicit state machines and bounded heuristics over deep abstractions.
+- Stay close to vanilla patterns where possible:
+  - job site blocks
+  - villager levels
+  - villager trades
+  - villager restocking
 
-## Vanilla Baseline
+## Non-Goals
 
-Before adding custom behavior, the baseline Minecraft-friendly design is:
+- No generalized AI behavior tree.
+- No chest logistics or output network.
+- No attempt to parse every possible modded tree shape.
+- No live trade mutation every time a workstation block is swapped under an existing villager.
 
-- A workstation block marks a villager profession.
-- A villager with that profession gets a workstation memory and normal village behavior.
-- Extra work logic runs from the workstation block entity when a lumberjack is assigned.
-
-That is the direction this proposal follows. There is no separate controller block. The placed block is the workstation, the POI, and the runtime owner.
-
-## Recommended Package Layout
+## Package Layout
 
 ```text
 com.jerome.pleasechop
   PleaseChopMod
   block/
     LumberjackWorkstationBlock
+    WorkstationWoodType
   block/entity/
     LumberjackWorkstationBlockEntity
   client/
-    PleaseChopClientEvents
     LumberjackWorkstationRenderer
+    PleaseChopClientEvents
+    PleaseChopConfigScreen
   config/
     PleaseChopConfig
-  data/
-    LumberjackTreeScan
-    LumberjackTreePlan
-    LumberjackTripRuntime
-    TreeBlockColumn
-  entity/ai/
-    LumberjackNavigationHelper
-    LumberjackHarvestHelper
-    LumberjackInventoryHelper
-  profession/
-    ModPoiTypes
-    ModVillagerProfessions
   registry/
     ModBlockEntities
     ModBlocks
+    ModPoiTypes
+    ModVillagerProfessions
+  trade/
+    LumberjackTradeManager
+  tree/
+    TreeCandidateDetector
+  world/
+    TreeReservationData
 ```
 
-## Core Block
+This is deliberately flatter than the original proposal. The codebase ended up proving that a few concrete runtime owners were enough.
 
-### `PleaseChopMod`
+## Bootstrap and Registration
 
-Responsibilities:
-
-- Register blocks, items, block entities, POIs, villager professions, and config.
-- Add the workstation item to the creative tab.
-
-Methods:
-
-- `public PleaseChopMod(IEventBus modEventBus, ModContainer modContainer)`
-- `private void addCreativeTabEntries(BuildCreativeModeTabContentsEvent event)`
-
-### `LumberjackWorkstationBlock`
-
-Reasoning:
-
-- Keep it structurally parallel to the existing block-with-block-entity pattern in your mods.
-- This block is not a controller. It is the actual villager workstation and POI.
-- I do not recommend redstone as the primary trigger. That would be a custom pattern fighting vanilla instead of using it.
-
-State:
-
-- `DirectionProperty FACING`
-
-Methods:
-
-- `public LumberjackWorkstationBlock(BlockBehaviour.Properties properties)`
-- `protected MapCodec<? extends BaseEntityBlock> codec()`
-- `protected RenderShape getRenderShape(BlockState state)`
-- `protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context)`
-- `protected boolean isPathfindable(BlockState state, PathComputationType pathComputationType)`
-- `public BlockState getStateForPlacement(BlockPlaceContext context)`
-- `protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder)`
-- `public BlockEntity newBlockEntity(BlockPos pos, BlockState state)`
-- `public <T extends BlockEntity> @Nullable BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type)`
-- `protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston)`
-
-## Profession and POI
-
-### `ModPoiTypes`
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/PleaseChopMod.java`
 
 Responsibilities:
+- register common config
+- register the NeoForge config screen entry point
+- register blocks, block entities, POIs, villager professions, and trades
+- add workstation items to the functional creative tab
 
-- Register one POI matching the workstation block states.
+The mod id is `pleasechop`.
 
-Methods:
+## Workstation Blocks
 
-- `public static void register(IEventBus modEventBus)`
-- `private static Set<BlockState> collectStates(Block block)`
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/block/LumberjackWorkstationBlock.java`
 
-### `ModVillagerProfessions`
+The workstation block is:
+- the placed block
+- the villager job site block
+- the block entity host
 
-Responsibilities:
+This is intentionally vanilla-like. There is no separate invisible controller block.
 
-- Register `LUMBERJACK`.
-- Bind profession to workstation POI.
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/block/WorkstationWoodType.java`
 
-Methods:
+This maps workstation variants to their wood-family behavior:
+- item appearance
+- trade specialization
+- specialization-specific resources
 
-- `public static void register(IEventBus modEventBus)`
+It does **not** decide what trees a lumberjack may chop. Workstation wood type is for villager identity and trades, not harvesting permission.
 
-This is the most vanilla part of the design. I would not replace profession registration with a custom “fake profession” system.
+## Profession and Requested Items
 
-Expected profession behavior:
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/registry/ModPoiTypes.java`
 
-- An unemployed villager can claim the workstation and become a lumberjack.
-- The workstation block entity should prefer its owning lumberjack if one exists.
-- If that villager dies or loses the workstation, the block entity can recruit a new one through the same vanilla profession loop.
-- The mod does not manage chests or downstream logistics. Players can combine it with other mods if they want output capture.
+Registers the workstation POI from the workstation block states.
 
-## Main Runtime Owner
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/registry/ModVillagerProfessions.java`
 
-### `LumberjackWorkstationBlockEntity`
+Registers the `LUMBERJACK` profession.
 
-Reasoning:
+The profession also declares a broad `requestedItems` set so villagers are naturally interested in tree outputs:
+- overworld logs
+- stems
+- leaves
+- saplings and propagules
+- sticks
+- apples
 
-- This should be the main orchestrator, just like `PleaseStoreControllerBlockEntity`.
-- Do not build a generic behavior tree or job engine. One explicit state machine is enough.
-- The workstation should own at most one active lumberjack. Do not make this multi-worker in V1.
+This matters because the workstation runtime still directs work, but it should not fight vanilla inventory preferences more than necessary.
 
-Persistent fields:
+## Trade Specialization
 
-- `@Nullable UUID assignedVillagerUuid`
-- `@Nullable BlockPos forestAnchorPos`
-- `@Nullable BlockPos activeTreeRootPos`
-- `boolean running`
-- `LumberjackTripPhase tripPhase`
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/trade/LumberjackTradeManager.java`
 
-Runtime-only fields:
+Trades stay level-based, like normal villagers. The custom part is only the wood specialization.
 
-- `@Nullable LumberjackTreePlan activeTreePlan`
-- `@Nullable LumberjackTripRuntime activeTrip`
-- `long phaseDeadlineGameTime`
-- `int failedPathAttempts`
+Current trade shape:
 
-Suggested enum:
+- Level 1
+  - sells matching logs
+  - sells matching saplings
+  - oak specialization also sells apples
+  - buys stone axes
+  - buys bread
+- Level 2
+  - sells stripped logs
+  - sells leaves
+  - buys carrots
+  - buys baked potatoes
+- Level 3
+  - sells sticks
+  - sells specialization-specific extras where they make sense
+  - buys iron axes
+  - buys pumpkin pie
+- Level 4
+  - small chance of selling an enchanted iron axe
+- Level 5
+  - very small chance of selling an enchanted diamond axe
 
-- `LumberjackTripPhase`
-  - `IDLE`
-  - `FINDING_WORKER`
-  - `SCANNING_TREE`
-  - `WALKING_TO_TREE`
-  - `CHOPPING_TREE`
-  - `COLLECTING_DROPS`
-  - `REPLANTING`
-  - `RETURNING_TO_WORKSTATION`
+Wood specialization is stored on the villager in persistent data, but it is derived from the villager's current valid job site:
+- losing the station clears specialization
+- taking a valid lumberjack workstation sets specialization from that block
 
-Public methods:
+This is deliberately simpler than trying to hot-swap an active villager's offers live. Vanilla already tolerates profession identity being set by the workstation claim.
 
-- `public LumberjackWorkstationBlockEntity(BlockPos pos, BlockState blockState)`
-- `public void onWorkstationClaimed(ServerLevel level, Villager villager)`
-- `public void setForestAnchorPos(@Nullable BlockPos forestAnchorPos)`
-- `public void tryStartWorkCycle(ServerLevel level)`
-- `public void releaseWorker()`
-- `public static void tick(Level level, BlockPos pos, BlockState state, LumberjackWorkstationBlockEntity workstation)`
+## Workstation Runtime
 
-Tick-phase methods:
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/block/entity/LumberjackWorkstationBlockEntity.java`
 
-- `private void tickServer(ServerLevel level)`
-- `private boolean ensureAssignedVillager(ServerLevel level)`
-- `private boolean isAssignedVillagerStillValid(ServerLevel level)`
-- `private void tickSleepCleanup(ServerLevel level, Villager villager)`
-- `private void startTreeSearch(ServerLevel level)`
-- `private void tickWalkToTree(ServerLevel level, Villager villager)`
-- `private void tickChopTree(ServerLevel level, Villager villager)`
-- `private void tickCollectDrops(ServerLevel level, Villager villager)`
-- `private void tickReplant(ServerLevel level, Villager villager)`
-- `private void tickReturnToWorkstation(ServerLevel level, Villager villager)`
-- `private void finishRun(ServerLevel level)`
-- `private void failRun(ServerLevel level, String reason)`
+This is the core runtime owner.
 
-Assignment methods:
+The block entity is responsible for:
+- finding or validating the assigned lumberjack
+- scanning trees
+- starting manual or autonomous tree jobs
+- ticking active chopping jobs
+- tracking remembered drop sites
+- tracking queued replant sites
+- dispatching planting recovery
+- dispatching scavenging
+- maintaining debug state for the renderer
+- handling villager maintenance such as inventory cleanup and restocking
 
-- `private Optional<Villager> findClaimedLumberjack(ServerLevel level)`
-- `private Optional<Villager> findNearbyUnemployedVillager(ServerLevel level)`
-- `private boolean canAssignVillager(Villager villager)`
-- `private void assignVillager(ServerLevel level, Villager villager)`
-- `private void releaseVillagerClaim(ServerLevel level)`
-- `private void refreshVillagerClaim(ServerLevel level)`
+This is the biggest custom system in the mod, but it is still just one explicit orchestrator instead of a distributed framework.
 
-Persistence methods:
+### Main Tick Order
 
-- `public void loadAdditional(CompoundTag tag, HolderLookup.Provider registries)`
-- `protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries)`
-- `public CompoundTag getUpdateTag(HolderLookup.Provider registries)`
-- `public ClientboundBlockEntityDataPacket getUpdatePacket()`
-- `public void setRemoved()`
+At a high level the server tick does this:
+
+1. age remembered sites and timers
+2. run worker maintenance
+3. if there is an active tree job, tick it
+4. otherwise, in priority order:
+   - autonomous chopping
+   - planting recovery
+   - scavenging
+
+That ordering is intentional. Cutting trees is the main job. Recovery work only fills the gaps.
+
+### Active Tree Job
+
+Current tree job phases:
+- `MOVING_TO_TREE`
+- `CHOPPING`
+- `LINGERING_UNDER_TREE`
+- `PLANTING_SAPLING`
+- `RETURNING_TO_WORKSTATION`
+
+Important behavior:
+- once chopping finishes, the replant site is queued immediately
+- if lingering manages to plant right away, that queued site is removed
+- the villager can collect nearby tree drops while lingering
+- higher-level villagers chop faster and linger less
+- non-critical return legs may be interrupted without losing the important work state
+
+### Planting Recovery
+
+Current planting recovery phases:
+- `MOVING_TO_SITE`
+- `PLANTING`
+- `RETURNING_AFTER_PLANTING`
+- `RETURNING_TO_WORKSTATION`
+
+Design intent:
+- chopping and replant recovery are separate jobs
+- queued sites stay pending until they are actually planted
+- the workstation scans the queue from most recent to oldest and picks the first site the villager can currently satisfy
+- if planting succeeds, the site is removed
+- if saplings are missing, the site remains queued
+
+This is closer to a workstation-owned maintenance queue than to a single giant mixed “cut and fully clean up right now” job.
+
+### Scavenging
+
+Current scavenging phases:
+- `MOVING_TO_SITE`
+- `COLLECTING`
+- `LINGERING_AT_SITE`
+- `RETURNING_TO_WORKSTATION`
+
+Scavenging is deliberately constrained:
+- only remembered sites are eligible
+- a site is only eligible if it has visible collectible drops now
+- sites have visit cooldowns
+- sites retire after a small number of completed visits
+
+That keeps scavenging from taking over the whole workday.
+
+### Worker Progression
+
+Villager level affects runtime directly.
+
+Current chop interval per log:
+- level 1: `40` ticks
+- level 2: `32`
+- level 3: `24`
+- level 4: `18`
+- level 5: `12`
+
+Current movement speed:
+- level 1: `0.40`
+- level 2: `0.425`
+- level 3: `0.45`
+- level 4: `0.475`
+- level 5: `0.50`
+
+Current daily tree limit:
+- level 1: `1`
+- each level adds `+1`
+
+This matches the intended progression:
+- novice villagers are slow and conservative
+- advanced villagers cut more and spend less time idling under trees
+
+### Maintenance
+
+The workstation also handles villager maintenance:
+- daily tree counters are reset during sleep cleanup
+- collected tree output is cleared during sleep cleanup
+- queued replant saplings are preserved instead of being deleted blindly
+- normal villager restocking is triggered through the vanilla restock path rather than a custom trade-reset system
 
 ## Tree Detection
 
-### `LumberjackTreeScan`
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/tree/TreeCandidateDetector.java`
 
-Reasoning:
+This is the second major system.
 
-- Tree finding is the hardest part to get correct.
-- Keep it isolated from the block entity so it can be tested and tuned without dragging navigation logic into it.
+The detector does **not** try to understand every connected log as a tree. It is intentionally conservative.
 
-Responsibilities:
+### Candidate Model
 
-- Given a forest anchor and radius, find the nearest valid tree candidate.
-- Reject player builds and partial trees as much as possible with explicit heuristics.
+`CandidateTree` currently stores:
+- `rootPos`
+- `rootPositions`
+- `trunkPositions`
+- `logPositions`
+- `leafPositions`
+- `saplingItemId`
 
-Methods:
+`rootPositions` are especially important:
+- single-trunk trees use one grounded root
+- wide trees use a grounded `2x2` root footprint
 
-- `public static @Nullable LumberjackTreePlan findNearestTree(ServerLevel level, BlockPos origin, int radius)`
-- `public static @Nullable LumberjackTreePlan findNearestTree(ServerLevel level, BlockPos forestAnchor, int radius)`
-- `private static boolean isValidLog(BlockState state)`
-- `private static boolean isValidLeaf(BlockState state)`
-- `private static boolean isHarvestableSapling(BlockState state)`
-- `private static @Nullable BlockPos findRootLog(ServerLevel level, BlockPos startPos)`
-- `private static Set<BlockPos> collectConnectedLogs(ServerLevel level, BlockPos rootPos)`
-- `private static Set<BlockPos> collectConnectedLeaves(ServerLevel level, Set<BlockPos> logs)`
-- `private static boolean hasSaplingSupport(ServerLevel level, BlockPos rootPos)`
-- `private static boolean looksLikeNaturalTree(Set<BlockPos> logs, Set<BlockPos> leaves, BlockPos rootPos)`
+### Detection Strategy
 
-### `LumberjackTreePlan`
+The detector starts from grounded vertical base logs.
 
-Value object returned by the scan.
+Supported families:
+- normal single-trunk trees
+- large spruce
+- large jungle
+- dark oak
 
-Fields:
+Important rules:
+- tree roots must be on valid sapling-growing ground
+- extra ground contact outside the intended root invalidates the candidate
+- foreign connected logs invalidate the candidate
+- strict neighbor checks reject structural attachments
+- replaceable clutter such as grass and flowers is ignored
+- bee nests and beehives are allowed as tree-adjacent structure
 
-- `BlockPos rootPos`
-- `List<BlockPos> logBreakOrder`
-- `List<BlockPos> leafCheckPositions`
-- `BlockPos replantPos`
-- `BlockState replantSaplingState`
-- `AABB collectionBounds`
+### Leaf Bridges
 
-Methods:
+Leaf bridges are only used narrowly:
+- they can recover stray disconnected same-species branch logs
+- they must not merge separate grounded trees into one candidate
 
-- `public BlockPos getRootPos()`
-- `public List<BlockPos> getLogBreakOrder()`
-- `public BlockPos getNextLogPos(int index)`
-- `public boolean hasRemainingLogs(int index)`
-- `public BlockPos getReplantPos()`
-- `public BlockState getReplantSaplingState()`
-- `public AABB getCollectionBounds()`
+If a leaf-bridged component has its own ground contact, the tree is rejected instead of merged.
 
-I strongly prefer a precomputed plan over rescanning every few ticks.
+That rule is there specifically to avoid chopping two nearby oaks as one tree just because their canopies overlap.
 
-## Inventory Model
+### Wide Trees
 
-This is the part where your new requirement matters most.
+Wide-tree behavior differs by species:
+- spruce: supports both `1x1` and `2x2`
+- jungle: supports both `1x1` and `2x2`
+- dark oak: wide-tree only
 
-The lumberjack keeps all gathered output in their own villager inventory. The mod does not push items into chests, pipes, or adjacent inventories. That is a hard boundary, and it is a good one.
+Wide spruce and jungle may fall back to the single-tree path when the only wide-tree failure is “invalid `2x2` base”.
 
-The problem is obvious though: without output extraction, the villager eventually fills up and stops functioning. So V1 needs explicit daily decay.
-The problem is obvious though: without output extraction, the villager eventually fills up and stops functioning. So V1 needs explicit cleanup.
+### Debug Output
 
-### `LumberjackInventoryHelper`
+The detector can also produce rejection reasons:
+- invalid root/base
+- invalid touching block
+- extra ground contact
+- foreign wood attachment
+- invalid wide-tree validation
 
-Responsibilities:
+Those reasons are used by workstation debug chat when enabled.
 
-- Check villager inventory capacity.
-- Apply a simple sleep-time cleanup rule so the lumberjack remains functional even if the player never extracts output.
+## World-Scoped Tree Reservation
 
-Methods:
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/world/TreeReservationData.java`
 
-- `public static boolean pickupItemEntity(Villager villager, ItemEntity itemEntity)`
-- `public static boolean hasFreeWorkingSpace(Villager villager, int requiredSlots)`
-- `public static boolean cleanupOnSleep(Villager villager)`
-- `private static boolean isHarvestOutput(ItemStack stack)`
+This is the anti-double-claim system.
 
-Recommended V1 cleanup rule:
+Without it, two workstations can select the same tree at the same time and both waste time walking, chopping, lingering, and queueing replanting for the same stump.
 
-- When the lumberjack enters their normal sleep cycle, clear harvested forestry output from their inventory.
-- Apply cleanup only to harvest output categories: logs, sticks, saplings, apples. Do not delete unrelated player-inserted items if you can avoid it.
-- Do not preserve saplings specially. The next harvested tree should replenish them naturally.
+Current design:
+- world-scoped `SavedData`
+- key = sorted root footprint of the tree
+- value = reserving workstation position plus expiry tick
 
-I would not call this “storage” or “deposit.” It is a maintenance cleanup to keep the profession functional.
+Operations:
+- `tryReserve`
+- `refresh`
+- `release`
+- `isReservedByOther`
 
-I also would not make it too clever. “Sleep clears harvest output” is more legible than a percentage decay system.
+This is intentionally a small world-local map, not a global singleton service.
 
-## Runtime Trip State
+## Client Rendering
 
-### `LumberjackTripRuntime`
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/client/LumberjackWorkstationRenderer.java`
 
-Reasoning:
+The renderer has two jobs:
+- render a custom axe-on-stump workstation visual
+- render debug overlays when enabled
 
-- Keep per-run mutable counters out of the block entity field list where possible.
-- This is not a framework object. It is just a bag of explicit runtime state.
+Debug visuals include:
+- detected roots
+- detected logs
+- pending replant sites
+- active work destination marker
 
-Fields:
+The renderer deliberately expands its culling logic so debug shapes still render when the tree is in view even if the workstation block itself is not centered on screen.
 
-- `int choppedLogCount`
-- `int nextLogIndex`
-- `int nextCollectionTick`
-- `int nextSwingTick`
-- `boolean saplingReserved`
-- `boolean depositedAnyItems`
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/client/PleaseChopClientEvents.java`
 
-Methods:
+Client-only registration and event hooks live here.
 
-- `public void resetForNewPlan(LumberjackTreePlan plan, long gameTime)`
-- `public boolean canSwing(long gameTime)`
-- `public void markSwing(long gameTime, int cooldownTicks)`
-- `public boolean canCollect(long gameTime)`
-- `public void markCollected(long gameTime, int cooldownTicks)`
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/client/PleaseChopConfigScreen.java`
 
-## Focused Helpers
-
-### `LumberjackNavigationHelper`
-
-Responsibilities:
-
-- Wrap villager pathing and arrival checks.
-- Centralize stall detection.
-
-Methods:
-
-- `public static void enableDoorNavigation(Villager villager)`
-- `public static boolean moveTo(Villager villager, BlockPos pos, double speed)`
-- `public static boolean hasArrived(Villager villager, BlockPos pos, double maxDistanceSqr)`
-- `public static boolean isStalled(Villager villager, Vec3 previousPos, double minMovementDistanceSqr)`
-
-### `LumberjackHarvestHelper`
-
-Responsibilities:
-
-- Perform log breaking in a controlled way.
-- Spawn vanilla drops by using the block’s normal destroy flow.
-
-Methods:
-
-- `public static boolean breakLog(ServerLevel level, BlockPos pos, @Nullable Villager villager)`
-- `public static List<ItemEntity> findNearbyDrops(ServerLevel level, AABB bounds)`
-- `public static boolean pickupDrops(Villager villager, List<ItemEntity> drops)`
-- `public static boolean replantSapling(ServerLevel level, BlockPos pos, BlockState saplingState, Villager villager)`
+This provides the NeoForge config UI hook for the mod.
 
 ## Config
 
-### `PleaseChopConfig`
+### `/Users/jerome/PleaseChop/src/main/java/com/jerome/pleasechop/config/PleaseChopConfig.java`
 
-Suggested first settings:
+The current config surface is intentionally small:
+- `debug.chat`
+- `debug.render`
 
-- `villagerSearchRadius`
-- `treeSearchRadius`
-- `forestAnchorRadius`
-- `maxTreeLogs`
-- `pathfindTimeoutTicks`
-- `dropCollectionRadius`
-- `requireSaplingReplant`
-- `sleepCleanupEnabled`
+Both are disabled by default.
 
-Methods:
+This is preferable to inventing a large settings surface before the core behavior is stable.
 
-- same structure as `PleaseStoreConfig`
+## Assets
 
-I would keep this small. Too many knobs usually means the base behavior is not stable yet.
+Workstation item icons now use texture-based item models under:
+- `/Users/jerome/PleaseChop/src/main/resources/assets/pleasechop/models/item/`
+- `/Users/jerome/PleaseChop/src/main/resources/assets/pleasechop/textures/item/`
 
-## Proposed First Delivery Slice
+The shared hand-drawn source is:
+- `/Users/jerome/PleaseChop/src/main/resources/assets/pleasechop/textures/item/lumberjack_workstation.png`
 
-The smallest slice that proves the mod without overdesign:
+Derived per-wood item textures exist for the workstation variants.
 
-1. Workstation block + POI + profession registration.
-2. One assigned lumberjack villager.
-3. Workstation-owned work cycle starts automatically when the lumberjack is idle and daytime/work conditions are valid.
-4. Scan nearest simple overworld tree made of vanilla logs and leaves.
-5. Villager walks to tree.
-6. Tree logs are broken in a fixed order.
-7. Villager picks up drops in a radius.
-8. One matching sapling is replanted.
-9. Villager returns to the workstation.
-10. When the villager sleeps, harvest output in their inventory is cleaned up so the lumberjack remains usable without external extraction.
+## Why This Shape
 
-## Deliberate Non-Goals For V1
+The current architecture is more custom than vanilla villager AI, but less custom than the original proposal would have become.
 
-- No generalized villager job scheduler.
-- No support for every modded tree on day one.
-- No multi-worker coordination.
-- No GUI unless item-based setup becomes clearly insufficient.
-- No autonomous infinite farming loop. Triggered trips are easier to reason about and much safer.
-- No custom profession system outside the vanilla workstation model.
+The important design choices are:
+- keep the villager profession and trading system vanilla
+- keep one explicit workstation-owned runtime
+- isolate tree parsing and reservation as separate concerns
+- avoid a generic task framework
 
-## Main Design Questions To Resolve
+That is the narrowest system that still solves the actual gameplay problems:
+- tree parsing
+- multi-workstation conflicts
+- queued replant recovery
+- predictable villager progression
 
-These are the decisions worth discussing before implementation:
+## Current Caveats
 
-1. Should `forestAnchorPos` be configurable at all in V1, or should the workstation position itself be the only search origin?
-2. Should the workstation rely purely on profession assignment, or also persist a stronger one-villager ownership lock once claimed?
-3. What exact sleep cleanup rule feels fair enough to keep the villager functional without making storage mods irrelevant?
-4. How aggressive should tree detection be about avoiding player-built log structures?
-5. Should replanting be mandatory, or should the run still succeed if no sapling is available?
+- Tree parsing is intentionally conservative and will still reject ambiguous shapes.
+- Scavenging and planting recovery are workstation-owned behaviors, not native villager brain tasks.
+- Workstation item art is functional, but still an asset-polish area.
+- Debug output exists for tuning and should stay optional.

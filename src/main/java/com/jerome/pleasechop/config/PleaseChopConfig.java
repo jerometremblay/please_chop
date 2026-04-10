@@ -24,12 +24,20 @@ public final class PleaseChopConfig {
         return COMMON.debugRender.get();
     }
 
+    public static int treeSearchRadius() {
+        return COMMON.treeSearchRadius.get();
+    }
+
     public static void setDebugChatEnabled(boolean enabled) {
         COMMON.debugChat.set(enabled);
     }
 
     public static void setDebugRenderEnabled(boolean enabled) {
         COMMON.debugRender.set(enabled);
+    }
+
+    public static void setTreeSearchRadius(int radius) {
+        COMMON.treeSearchRadius.set(radius);
     }
 
     public static void save() {
@@ -39,8 +47,18 @@ public final class PleaseChopConfig {
     public static final class Common {
         private final ModConfigSpec.BooleanValue debugChat;
         private final ModConfigSpec.BooleanValue debugRender;
+        private final ModConfigSpec.IntValue treeSearchRadius;
 
         private Common(ModConfigSpec.Builder builder) {
+            builder.comment("Settings for Please Chop workstation behavior.")
+                    .translation("pleasechop.config.category.work")
+                    .push("work");
+            treeSearchRadius = builder
+                    .comment("Horizontal search radius in blocks for finding candidate trees around a workstation.")
+                    .translation("pleasechop.config.work.tree_search_radius")
+                    .defineInRange("treeSearchRadius", 16, 4, 64);
+            builder.pop();
+
             builder.comment("Settings for Please Chop workstation debugging.")
                     .translation("pleasechop.config.category.debug")
                     .push("debug");

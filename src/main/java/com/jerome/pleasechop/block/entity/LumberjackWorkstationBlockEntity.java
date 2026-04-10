@@ -1490,7 +1490,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     }
 
     private void clearCollectedTreeItems(Villager worker) {
-        Map<Item, Integer> reservedSaplings = getReservedPendingSaplings();
+        Map<Item, Integer> reservedSaplings = getReservedSaplingsForCleanup(worker);
         SimpleContainer inventory = worker.getInventory();
         for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
             ItemStack stack = inventory.getItem(slot);
@@ -1504,7 +1504,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
         }
     }
 
-    private Map<Item, Integer> getReservedPendingSaplings() {
+    private Map<Item, Integer> getReservedSaplingsForCleanup(Villager worker) {
         Map<Item, Integer> reservedSaplings = new HashMap<>();
         for (PendingPlantingSite site : pendingPlantings) {
             Item saplingItem = getSaplingItem(site.saplingItemId());
@@ -1513,7 +1513,20 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
             }
             reservedSaplings.merge(saplingItem, site.rootPositions().size(), Integer::sum);
         }
+
+        SimpleContainer inventory = worker.getInventory();
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (stack.isEmpty() || !isSaplingItem(stack.getItem())) {
+                continue;
+            }
+            reservedSaplings.merge(stack.getItem(), stack.getMaxStackSize(), Math::max);
+        }
         return reservedSaplings;
+    }
+
+    private boolean isSaplingItem(Item item) {
+        return getExpectedSaplingBlockItem(item) != null;
     }
 
     private boolean reservePendingSaplings(ItemStack stack, Map<Item, Integer> reservedSaplings) {

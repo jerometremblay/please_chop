@@ -1,5 +1,6 @@
 package com.jerome.pleasechop.tree;
 
+import com.jerome.pleasechop.config.PleaseChopConfig;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -22,7 +23,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 public final class TreeCandidateDetector {
-    private static final int SEARCH_RADIUS = 16;
     private static final int MAX_HORIZONTAL_DRIFT = 4;
     private static final int MAX_HEIGHT = 48;
     private static final int MIN_TRUNK_HEIGHT = 4;
@@ -43,19 +43,20 @@ public final class TreeCandidateDetector {
     }
 
     public static DetectionScan scanDebug(ServerLevel level, BlockPos workstationPos) {
+        int searchRadius = PleaseChopConfig.treeSearchRadius();
         List<CandidateTree> candidateTrees = new ArrayList<>();
         List<String> rejectionMessages = new ArrayList<>();
         Set<BlockPos> scannedRoots = new HashSet<>();
         Set<BlockPos> debugRoots = new HashSet<>();
 
-        BlockPos.betweenClosedStream(workstationPos.offset(-SEARCH_RADIUS, -4, -SEARCH_RADIUS), workstationPos.offset(SEARCH_RADIUS, SEARCH_RADIUS, SEARCH_RADIUS))
+        BlockPos.betweenClosedStream(workstationPos.offset(-searchRadius, -4, -searchRadius), workstationPos.offset(searchRadius, searchRadius, searchRadius))
                 .map(BlockPos::immutable)
                 .filter(pos -> isGroundedVerticalBaseLog(level, pos))
                 .map(pos -> findBaseAnchor(level, pos))
                 .filter(rootPos -> scannedRoots.add(rootPos))
                 .forEach(rootPos -> {
                     debugRoots.addAll(resolveDebugRootFootprint(level, rootPos));
-                    AnalysisResult result = analyzeCandidate(level, rootPos);
+                    AnalysisResult result = analyzeCandidate(level, rootPos, searchRadius);
                     if (result.candidate() != null) {
                         candidateTrees.add(result.candidate());
                     } else if (result.rejectionReason() != null) {
@@ -78,11 +79,11 @@ public final class TreeCandidateDetector {
         return scanDebug(level, workstationPos).debugRootBlocks();
     }
 
-    private static AnalysisResult analyzeCandidate(ServerLevel level, BlockPos rootPos) {
+    private static AnalysisResult analyzeCandidate(ServerLevel level, BlockPos rootPos, int searchRadius) {
         Block rootBlock = level.getBlockState(rootPos).getBlock();
         WideTreeType wideTreeType = resolveWideTreeType(rootBlock);
         if (wideTreeType != null) {
-            AnalysisResult wideResult = analyzeWideCandidate(level, rootPos, rootBlock, wideTreeType);
+            AnalysisResult wideResult = analyzeWideCandidate(level, rootPos, rootBlock, wideTreeType, searchRadius);
             if (wideResult.candidate() != null) {
                 return wideResult;
             }
@@ -91,7 +92,7 @@ public final class TreeCandidateDetector {
             }
         }
 
-        AnalysisResult singleResult = analyzeSingleTreeCandidate(level, rootPos, rootBlock);
+        AnalysisResult singleResult = analyzeSingleTreeCandidate(level, rootPos, rootBlock, searchRadius);
         if (singleResult.candidate() == null) {
             return AnalysisResult.reject("block=" + BuiltInRegistries.BLOCK.getKey(rootBlock) + ", single=" + singleResult.rejectionReason());
         }
@@ -117,7 +118,7 @@ public final class TreeCandidateDetector {
         return List.of(rootPos);
     }
 
-    private static AnalysisResult analyzeSingleTreeCandidate(ServerLevel level, BlockPos rootPos, Block rootBlock) {
+    private static AnalysisResult analyzeSingleTreeCandidate(ServerLevel level, BlockPos rootPos, Block rootBlock, int searchRadius) {
         if (!isGroundedVerticalBaseLog(level, rootPos)) {
             return AnalysisResult.reject("root is not a grounded vertical log");
         }
@@ -129,7 +130,7 @@ public final class TreeCandidateDetector {
         }
         int maxLogs = calculateMaxLogs(rootBlock, 1);
         Set<BlockPos> connectedLogs = collectConnectedSpeciesLogs(level, List.of(rootPos), rootBlock, maxLogs);
-        connectedLogs = includeLeafBridgedLogs(level, connectedLogs, rootBlock, expectedLeafBlock, rootPos, maxLogs);
+        connectedLogs = includeLeafBridgedLogs(level, connectedLogs, rootBlock, expectedLeafBlock, rootPos, maxLogs, searchRadius);
         if (connectedLogs.isEmpty() || connectedLogs.size() > maxLogs) {
             return AnalysisResult.reject("connected logs invalid size=" + connectedLogs.size() + " max=" + maxLogs);
         }
@@ -137,10 +138,10 @@ public final class TreeCandidateDetector {
         if (neighborFailure != null) {
             return AnalysisResult.reject("tree touches invalid block " + neighborFailure);
         }
-        if (hasForeignLogConnection(level, connectedLogs, rootBlock, rootPos)) {
+        if (hasForeignLogConnection(level, connectedLogs, rootBlock, rootPos, searchRadius)) {
             return AnalysisResult.reject("connected logs touch a different wood type");
         }
-        if (hasGroundConnectionOutsideRoot(level, connectedLogs, rootLayer, rootBlock, rootPos)) {
+        if (hasGroundConnectionOutsideRoot(level, connectedLogs, rootLayer, rootBlock, rootPos, searchRadius)) {
             return AnalysisResult.reject("connected logs reach another ground contact outside the root");
         }
 
@@ -184,7 +185,7 @@ public final class TreeCandidateDetector {
         return AnalysisResult.accept(new CandidateTree(rootPos, rootPositions, trunkPositions, logPositions, leafPositions, BuiltInRegistries.ITEM.getKey(saplingItem).toString()));
     }
 
-    private static AnalysisResult analyzeWideCandidate(ServerLevel level, BlockPos rootPos, Block rootBlock, WideTreeType wideTreeType) {
+    private static AnalysisResult analyzeWideCandidate(ServerLevel level, BlockPos rootPos, Block rootBlock, WideTreeType wideTreeType, int searchRadius) {
         List<BlockPos> rootPositions = findExactWideBase(level, rootPos, rootBlock);
         if (rootPositions.isEmpty()) {
             return AnalysisResult.reject("invalid 2x2 wide base for " + wideTreeType);
@@ -195,7 +196,7 @@ public final class TreeCandidateDetector {
         if (connectedLogs.isEmpty() || connectedLogs.size() > maxLogs) {
             return AnalysisResult.reject("wide connected logs invalid size=" + connectedLogs.size() + " max=" + maxLogs);
         }
-        if (hasGroundConnectionOutsideRoot(level, connectedLogs, new HashSet<>(rootPositions), rootBlock, rootPos)) {
+        if (hasGroundConnectionOutsideRoot(level, connectedLogs, new HashSet<>(rootPositions), rootBlock, rootPos, searchRadius)) {
             return AnalysisResult.reject("wide connected logs reach another ground contact outside the 2x2 root");
         }
 
@@ -209,7 +210,7 @@ public final class TreeCandidateDetector {
             return AnalysisResult.reject("no supported leaf block for wide root " + rootBlock);
         }
 
-        connectedLogs = includeLeafBridgedLogs(level, connectedLogs, rootBlock, expectedLeafBlock, rootPositions.get(0), maxLogs);
+        connectedLogs = includeLeafBridgedLogs(level, connectedLogs, rootBlock, expectedLeafBlock, rootPositions.get(0), maxLogs, searchRadius);
         if (connectedLogs.size() > maxLogs) {
             return AnalysisResult.reject("wide logs exceeded max after leaf bridge size=" + connectedLogs.size() + " max=" + maxLogs);
         }
@@ -217,7 +218,7 @@ public final class TreeCandidateDetector {
         if (neighborFailure != null) {
             return AnalysisResult.reject("wide tree touches invalid block " + neighborFailure);
         }
-        if (hasForeignLogConnection(level, connectedLogs, rootBlock, rootPositions.get(0))) {
+        if (hasForeignLogConnection(level, connectedLogs, rootBlock, rootPositions.get(0), searchRadius)) {
             return AnalysisResult.reject("wide logs touch a different wood type");
         }
         if (!validateWideTree(level, rootPositions, connectedLogs, trunkPositions, rootBlock, expectedLeafBlock, wideTreeType)) {
@@ -300,7 +301,7 @@ public final class TreeCandidateDetector {
         return visited;
     }
 
-    private static Set<BlockPos> includeLeafBridgedLogs(ServerLevel level, Set<BlockPos> connectedLogs, Block logBlock, Block expectedLeafBlock, BlockPos anchor, int maxLogs) {
+    private static Set<BlockPos> includeLeafBridgedLogs(ServerLevel level, Set<BlockPos> connectedLogs, Block logBlock, Block expectedLeafBlock, BlockPos anchor, int maxLogs, int searchRadius) {
         Set<BlockPos> expandedLogs = new HashSet<>(connectedLogs);
         Set<BlockPos> connectedLeaves = collectAdjacentMatchingLeaves(level, expandedLogs, expectedLeafBlock);
         boolean added;
@@ -314,7 +315,7 @@ public final class TreeCandidateDetector {
                     .filter(candidate -> isWithinTreeBounds(candidate, anchor, 2))
                     .filter(candidate -> level.getBlockState(candidate).is(logBlock))
                     .filter(candidate -> hasOnlyLeafBridge(level, candidate, expandedLogs, expectedLeafBlock))
-                    .filter(candidate -> !isGroundedLeafBridgedComponent(level, candidate, expandedLogs, logBlock, anchor))
+                    .filter(candidate -> !isGroundedLeafBridgedComponent(level, candidate, expandedLogs, logBlock, anchor, searchRadius))
                     .distinct()
                     .sorted(Comparator.<BlockPos>comparingInt(BlockPos::getY)
                             .thenComparingInt(BlockPos::getX)
@@ -605,7 +606,7 @@ public final class TreeCandidateDetector {
         return touchesConnectedLeaf;
     }
 
-    private static boolean isGroundedLeafBridgedComponent(ServerLevel level, BlockPos startPos, Set<BlockPos> connectedLogs, Block logBlock, BlockPos anchor) {
+    private static boolean isGroundedLeafBridgedComponent(ServerLevel level, BlockPos startPos, Set<BlockPos> connectedLogs, Block logBlock, BlockPos anchor, int searchRadius) {
         Set<BlockPos> visited = new HashSet<>();
         ArrayDeque<BlockPos> queue = new ArrayDeque<>();
         visited.add(startPos);
@@ -625,7 +626,7 @@ public final class TreeCandidateDetector {
                         }
 
                         BlockPos next = current.offset(dx, dy, dz);
-                        if (visited.contains(next) || connectedLogs.contains(next) || !isWithinGroundConnectionBounds(next, anchor)) {
+                        if (visited.contains(next) || connectedLogs.contains(next) || !isWithinGroundConnectionBounds(next, anchor, searchRadius)) {
                             continue;
                         }
 
@@ -643,7 +644,7 @@ public final class TreeCandidateDetector {
         return false;
     }
 
-    private static boolean hasGroundConnectionOutsideRoot(ServerLevel level, Set<BlockPos> connectedLogs, Set<BlockPos> rootPositions, Block logBlock, BlockPos anchor) {
+    private static boolean hasGroundConnectionOutsideRoot(ServerLevel level, Set<BlockPos> connectedLogs, Set<BlockPos> rootPositions, Block logBlock, BlockPos anchor, int searchRadius) {
         Set<BlockPos> visited = new HashSet<>(connectedLogs);
         ArrayDeque<BlockPos> queue = new ArrayDeque<>(connectedLogs);
 
@@ -661,7 +662,7 @@ public final class TreeCandidateDetector {
                         }
 
                         BlockPos next = current.offset(dx, dy, dz);
-                        if (visited.contains(next) || !isWithinGroundConnectionBounds(next, anchor)) {
+                        if (visited.contains(next) || !isWithinGroundConnectionBounds(next, anchor, searchRadius)) {
                             continue;
                         }
 
@@ -718,7 +719,7 @@ public final class TreeCandidateDetector {
         return state.is(Blocks.BEE_NEST) || state.is(Blocks.BEEHIVE);
     }
 
-    private static boolean hasForeignLogConnection(ServerLevel level, Set<BlockPos> connectedLogs, Block logBlock, BlockPos anchor) {
+    private static boolean hasForeignLogConnection(ServerLevel level, Set<BlockPos> connectedLogs, Block logBlock, BlockPos anchor, int searchRadius) {
         Set<BlockPos> visited = new HashSet<>(connectedLogs);
         ArrayDeque<BlockPos> queue = new ArrayDeque<>(connectedLogs);
 
@@ -732,7 +733,7 @@ public final class TreeCandidateDetector {
                         }
 
                         BlockPos next = current.offset(dx, dy, dz);
-                        if (visited.contains(next) || !isWithinGroundConnectionBounds(next, anchor)) {
+                        if (visited.contains(next) || !isWithinGroundConnectionBounds(next, anchor, searchRadius)) {
                             continue;
                         }
 
@@ -763,9 +764,9 @@ public final class TreeCandidateDetector {
         return !isLog(belowState) && isValidTreeGround(level, logPos.below(), belowState);
     }
 
-    private static boolean isWithinGroundConnectionBounds(BlockPos pos, BlockPos anchor) {
-        return Math.abs(pos.getX() - anchor.getX()) <= SEARCH_RADIUS + MAX_HORIZONTAL_DRIFT
-                && Math.abs(pos.getZ() - anchor.getZ()) <= SEARCH_RADIUS + MAX_HORIZONTAL_DRIFT
+    private static boolean isWithinGroundConnectionBounds(BlockPos pos, BlockPos anchor, int searchRadius) {
+        return Math.abs(pos.getX() - anchor.getX()) <= searchRadius + MAX_HORIZONTAL_DRIFT
+                && Math.abs(pos.getZ() - anchor.getZ()) <= searchRadius + MAX_HORIZONTAL_DRIFT
                 && pos.getY() >= anchor.getY() - 2
                 && pos.getY() - anchor.getY() <= MAX_HEIGHT;
     }
