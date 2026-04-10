@@ -39,7 +39,7 @@ displayName="${mod_name}" #mandatory
 logoFile="please_chop_logo.png"
 
 # A text field displayed in the mod UI
-credits="Built for NeoForge 1.21.1." #optional
+credits="Built for NeoForge 21.1 on Minecraft 1.21.x." #optional
 
 # The authors of the mod, displayed in the mod UI (optional)
 authors="Jérôme Tremblay"
@@ -73,7 +73,7 @@ Please Chop will let a workstation recruit a lumberjack villager, send them to h
     # Optional field describing why the dependency is required or why it is incompatible
     # reason="..."
     # The version range of the dependency
-    versionRange="[${neo_version},)" #mandatory
+    versionRange="${neo_version_range}" #mandatory
     # An ordering relationship for the dependency.
     # BEFORE - This mod is loaded BEFORE the dependency
     # AFTER - This mod is loaded AFTER the dependency

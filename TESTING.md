@@ -9,7 +9,7 @@ Start the dev client from the project root:
 
 What is already prepared:
 
-- NeoForge 1.21.1 dev runtime
+- NeoForge 21.1.x dev runtime on Minecraft 1.21.x
 - Minecraft assets downloaded into the local Gradle cache
 - Runtime folder initialized at `run/`
 
@@ -27,4 +27,4 @@ First in-game check:
 Useful paths:
 
 - Run directory: `run/`
-- Built jar: `build/libs/PleaseChop-1.0.0.jar`
+- Built jar: `build/libs/PleaseChop-1.0.1.jar`

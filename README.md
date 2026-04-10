@@ -1,6 +1,6 @@
 # Please Chop
 
-`Please Chop` is a NeoForge `1.21.1` mod that adds a lumberjack workstation and a `LUMBERJACK` villager profession.
+`Please Chop` is a NeoForge mod for Minecraft `1.21.x` that adds a lumberjack workstation and a `LUMBERJACK` villager profession.
 
 The mod stays close to vanilla where it can:
 - workstation blocks are normal villager job sites
@@ -100,8 +100,8 @@ When enabled:
 
 ## Requirements
 
-- Minecraft `1.21.1`
-- NeoForge `21.1.221`
+- Minecraft `1.21.x` (developed against `1.21.1`)
+- NeoForge `21.1.x` (developed against `21.1.221`)
 
 ## Development
 

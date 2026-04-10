@@ -1,6 +1,6 @@
 # Please Chop
 
-`Please Chop` is a NeoForge 1.21.1 mod scaffold for a lumberjack workstation. The current repository starts from the `PleaseStore` structure and is ready for the lumberjack implementation pass.
+`Please Chop` is a NeoForge mod scaffold for Minecraft 1.21.x with a lumberjack workstation. The current repository starts from the `PleaseStore` structure and is ready for the lumberjack implementation pass.
 
 ## Status
 
@@ -16,5 +16,5 @@
 
 ## Requirements
 
-- Minecraft `1.21.1`
-- NeoForge `21.1.221`
+- Minecraft `1.21.x` (developed against `1.21.1`)
+- NeoForge `21.1.x` (developed against `21.1.221`)
