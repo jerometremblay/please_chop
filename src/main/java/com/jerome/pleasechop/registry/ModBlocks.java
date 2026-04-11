@@ -5,10 +5,8 @@ import com.jerome.pleasechop.block.LumberjackWorkstationBlock;
 import com.jerome.pleasechop.block.WorkstationWoodType;
 import java.util.List;
 import net.minecraft.world.item.BlockItem;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
-import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredBlock;
@@ -68,15 +66,16 @@ public final class ModBlocks {
     }
 
     private static DeferredBlock<Block> registerWorkstation(WorkstationWoodType woodType) {
-        return BLOCKS.register(woodType.serializedName() + "_lumberjack_workstation",
-                () -> new LumberjackWorkstationBlock(BlockBehaviour.Properties.of()
+        return BLOCKS.registerBlock(woodType.serializedName() + "_lumberjack_workstation",
+                LumberjackWorkstationBlock::new,
+                properties -> properties
                         .mapColor(MapColor.WOOD)
                         .strength(2.0F)
-                        .sound(SoundType.WOOD)));
+                        .sound(SoundType.WOOD));
     }
 
     private static DeferredItem<BlockItem> registerWorkstationItem(WorkstationWoodType woodType, DeferredBlock<Block> block) {
-        return ITEMS.register(woodType.serializedName() + "_lumberjack_workstation",
-                () -> new BlockItem(block.get(), new Item.Properties()));
+        return ITEMS.registerItem(woodType.serializedName() + "_lumberjack_workstation",
+                properties -> new BlockItem(block.get(), properties));
     }
 }

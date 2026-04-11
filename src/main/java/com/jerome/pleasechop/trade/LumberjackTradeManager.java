@@ -12,8 +12,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
-import net.minecraft.world.entity.npc.Villager;
-import net.minecraft.world.entity.npc.VillagerTrades;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.npc.villager.VillagerTrades;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -34,7 +34,7 @@ public final class LumberjackTradeManager {
     }
 
     private static void onVillagerTrades(VillagerTradesEvent event) {
-        if (event.getType() != ModVillagerProfessions.LUMBERJACK.get()) {
+        if (event.getType() != ModVillagerProfessions.LUMBERJACK_KEY) {
             return;
         }
 
@@ -82,7 +82,7 @@ public final class LumberjackTradeManager {
         WorkstationWoodType resolved = WorkstationWoodType.fromWorkstationBlock(jobSiteLevel.getBlockState(jobSite.get().pos()).getBlock());
         if (resolved != null) {
             WorkstationWoodType saved = data.contains(SPECIALIZATION_TAG)
-                    ? WorkstationWoodType.fromSerializedName(data.getString(SPECIALIZATION_TAG))
+                    ? WorkstationWoodType.fromSerializedName(data.getStringOr(SPECIALIZATION_TAG, ""))
                     : null;
             if (saved != resolved) {
                 data.putString(SPECIALIZATION_TAG, resolved.serializedName());
@@ -102,7 +102,7 @@ public final class LumberjackTradeManager {
     private record SpecializedSellListing(WoodTypeItemResolver resolver, int emeraldCost, int count, int maxUses, int villagerXp)
             implements VillagerTrades.ItemListing {
         @Override
-        public MerchantOffer getOffer(Entity trader, RandomSource random) {
+        public MerchantOffer getOffer(ServerLevel level, Entity trader, RandomSource random) {
             if (!(trader instanceof Villager villager)) {
                 return null;
             }
@@ -111,14 +111,14 @@ public final class LumberjackTradeManager {
                 return null;
             }
             Item item = resolver.resolve(type);
-            return item == null ? null : new VillagerTrades.ItemsForEmeralds(item, emeraldCost, count, maxUses, villagerXp).getOffer(trader, random);
+            return item == null ? null : new VillagerTrades.ItemsForEmeralds(item, emeraldCost, count, maxUses, villagerXp).getOffer(level, trader, random);
         }
     }
 
     private record SpecializedOptionalSellListing(WoodTypeItemResolver resolver, int emeraldCost, int count, int maxUses, int villagerXp)
             implements VillagerTrades.ItemListing {
         @Override
-        public MerchantOffer getOffer(Entity trader, RandomSource random) {
+        public MerchantOffer getOffer(ServerLevel level, Entity trader, RandomSource random) {
             if (!(trader instanceof Villager villager)) {
                 return null;
             }
@@ -127,25 +127,25 @@ public final class LumberjackTradeManager {
                 return null;
             }
             Item item = resolver.resolve(type);
-            return item == null ? null : new VillagerTrades.ItemsForEmeralds(item, emeraldCost, count, maxUses, villagerXp).getOffer(trader, random);
+            return item == null ? null : new VillagerTrades.ItemsForEmeralds(item, emeraldCost, count, maxUses, villagerXp).getOffer(level, trader, random);
         }
     }
 
     private record RareListing(float chance, VillagerTrades.ItemListing delegate)
             implements VillagerTrades.ItemListing {
         @Override
-        public MerchantOffer getOffer(Entity trader, RandomSource random) {
+        public MerchantOffer getOffer(ServerLevel level, Entity trader, RandomSource random) {
             if (random.nextFloat() > chance) {
                 return null;
             }
-            return delegate.getOffer(trader, random);
+            return delegate.getOffer(level, trader, random);
         }
     }
 
     private record AxeBuyListing(Item axeItem, int emeraldAmount, int maxUses, int villagerXp)
             implements VillagerTrades.ItemListing {
         @Override
-        public MerchantOffer getOffer(Entity trader, RandomSource random) {
+        public MerchantOffer getOffer(ServerLevel level, Entity trader, RandomSource random) {
             return new MerchantOffer(new ItemCost(axeItem), new ItemStack(Items.EMERALD, emeraldAmount), maxUses, villagerXp, 0.05F);
         }
     }

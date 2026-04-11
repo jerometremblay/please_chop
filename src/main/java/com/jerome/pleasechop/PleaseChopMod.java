@@ -26,7 +26,7 @@ public final class PleaseChopMod {
 
     public PleaseChopMod(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, PleaseChopConfig.COMMON_SPEC);
-        if (FMLEnvironment.dist.isClient()) {
+        if (FMLEnvironment.getDist().isClient()) {
             modContainer.registerExtensionPoint(IConfigScreenFactory.class, (container, parent) -> new ConfigurationScreen(modContainer, parent));
         }
         ModBlocks.register(modEventBus);

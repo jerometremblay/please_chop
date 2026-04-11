@@ -19,19 +19,18 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.redstone.Orientation;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
-import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.pathfinder.PathComputationType;
-import net.minecraft.world.phys.shapes.BooleanOp;
 import net.minecraft.world.phys.shapes.CollisionContext;
-import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 
 public class LumberjackWorkstationBlock extends BaseEntityBlock {
     public static final MapCodec<LumberjackWorkstationBlock> CODEC = simpleCodec(LumberjackWorkstationBlock::new);
-    public static final DirectionProperty FACING = HorizontalDirectionalBlock.FACING;
+    public static final EnumProperty<Direction> FACING = HorizontalDirectionalBlock.FACING;
     public static final BooleanProperty POWERED = BlockStateProperties.POWERED;
     private static final VoxelShape SHAPE = Block.box(0.0D, 0.0D, 0.0D, 16.0D, 14.0D, 16.0D);
 
@@ -75,8 +74,8 @@ public class LumberjackWorkstationBlock extends BaseEntityBlock {
     }
 
     @Override
-    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, BlockPos fromPos, boolean movedByPiston) {
-        super.neighborChanged(state, level, pos, block, fromPos, movedByPiston);
+    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, @Nullable Orientation orientation, boolean movedByPiston) {
+        super.neighborChanged(state, level, pos, block, orientation, movedByPiston);
 
         boolean isPowered = level.hasNeighborSignal(pos);
         boolean wasPowered = state.getValue(POWERED);
@@ -85,7 +84,7 @@ public class LumberjackWorkstationBlock extends BaseEntityBlock {
         }
 
         level.setBlock(pos, state.setValue(POWERED, isPowered), Block.UPDATE_ALL);
-        if (!wasPowered && isPowered && !level.isClientSide && level.getBlockEntity(pos) instanceof LumberjackWorkstationBlockEntity workstation) {
+        if (!wasPowered && isPowered && !level.isClientSide() && level.getBlockEntity(pos) instanceof LumberjackWorkstationBlockEntity workstation) {
             workstation.startWorkCycle((ServerLevel) level);
         }
     }
@@ -97,7 +96,7 @@ public class LumberjackWorkstationBlock extends BaseEntityBlock {
 
     @Override
     public <T extends BlockEntity> @Nullable BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-        if (level.isClientSide) {
+        if (level.isClientSide()) {
             return null;
         }
 

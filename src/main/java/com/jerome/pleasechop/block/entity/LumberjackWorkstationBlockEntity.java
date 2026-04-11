@@ -6,6 +6,7 @@ import com.jerome.pleasechop.registry.ModVillagerProfessions;
 import com.jerome.pleasechop.tree.TreeCandidateDetector;
 import com.jerome.pleasechop.tree.TreeCandidateDetector.CandidateTree;
 import com.jerome.pleasechop.world.TreeReservationData;
+import com.mojang.serialization.Codec;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Comparator;
@@ -19,6 +20,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
+import java.util.stream.LongStream;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -38,9 +40,8 @@ import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.npc.InventoryCarrier;
-import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.schedule.Activity;
-import net.minecraft.world.entity.schedule.Schedule;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -48,6 +49,8 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -514,7 +517,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
                     debugChat(level, "could not collect item "
                             + targetItem.getItem().getHoverName().getString()
                             + " at " + formatPos(targetItem.blockPosition())
-                            + " wanted=" + worker.wantsToPickUp(targetItem.getItem())
+                            + " wanted=" + worker.wantsToPickUp(level, targetItem.getItem())
                             + " canAdd=" + worker.getInventory().canAddItem(targetItem.getItem()));
                     activeJob.markItemFailed(targetItem);
                     activeJob.clearTargetItem();
@@ -663,7 +666,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
                     debugChat(level, "could not collect replant sapling "
                             + BuiltInRegistries.ITEM.getKey(expectedSaplingItem)
                             + " at " + formatPos(saplingDrop.blockPosition())
-                            + " wanted=" + worker.wantsToPickUp(saplingDrop.getItem())
+                            + " wanted=" + worker.wantsToPickUp(level, saplingDrop.getItem())
                             + " canAdd=" + worker.getInventory().canAddItem(saplingDrop.getItem()));
                     plantingRecoveryJob.beginReturningAfterFailure();
                     setChanged();
@@ -716,8 +719,11 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     }
 
     private boolean collectItem(Villager worker, ItemEntity itemEntity) {
+        if (!(worker.level() instanceof ServerLevel serverLevel)) {
+            return false;
+        }
         int beforeCount = itemEntity.getItem().getCount();
-        InventoryCarrier.pickUpItem(worker, worker, itemEntity);
+        InventoryCarrier.pickUpItem(serverLevel, worker, worker, itemEntity);
         if (!itemEntity.isRemoved()) {
             return itemEntity.getItem().getCount() < beforeCount;
         }
@@ -787,7 +793,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
                 debugChat(level, "scavenge could not collect item "
                         + targetItem.getItem().getHoverName().getString()
                         + " at " + formatPos(targetItem.blockPosition())
-                        + " wanted=" + worker.wantsToPickUp(targetItem.getItem())
+                        + " wanted=" + worker.wantsToPickUp(level, targetItem.getItem())
                         + " canAdd=" + worker.getInventory().canAddItem(targetItem.getItem()));
                 scavengeJob.markItemFailed(targetItem);
                 scavengeJob.clearTargetItem();
@@ -945,7 +951,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
         if (!worldPosition.closerToCenterThan(worker.position(), 2.5D)) {
             return;
         }
-        if (worker.shouldRestock()) {
+        if (worker.shouldRestock((ServerLevel) level)) {
             worker.restock();
         }
     }
@@ -1149,7 +1155,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
             return false;
         }
 
-        if (villager.getVillagerData().getProfession() != ModVillagerProfessions.LUMBERJACK.get()) {
+        if (villager.getVillagerData().profession().value() != ModVillagerProfessions.LUMBERJACK.get()) {
             return false;
         }
 
@@ -1388,7 +1394,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
         }
 
         CompoundTag persistentData = worker.getPersistentData();
-        if (persistentData.getBoolean(SLEEP_CLEANED_TAG)) {
+        if (persistentData.getBooleanOr(SLEEP_CLEANED_TAG, false)) {
             return;
         }
 
@@ -1405,20 +1411,20 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     }
 
     private int getTreesCutToday(Villager worker) {
-        return worker.getPersistentData().getInt(TREES_CUT_TODAY_TAG);
+        return worker.getPersistentData().getIntOr(TREES_CUT_TODAY_TAG, 0);
     }
 
     private int getDailyTreeLimit(Villager worker) {
-        return Math.max(1, worker.getVillagerData().getLevel());
+        return Math.max(1, worker.getVillagerData().level());
     }
 
     private void incrementTreesCutToday(Villager worker) {
         CompoundTag data = worker.getPersistentData();
-        data.putInt(TREES_CUT_TODAY_TAG, data.getInt(TREES_CUT_TODAY_TAG) + 1);
+        data.putInt(TREES_CUT_TODAY_TAG, data.getIntOr(TREES_CUT_TODAY_TAG, 0) + 1);
     }
 
     private int getChopIntervalTicks(Villager worker) {
-        return switch (worker.getVillagerData().getLevel()) {
+        return switch (worker.getVillagerData().level()) {
             case 1 -> NOVICE_CHOP_INTERVAL_TICKS;
             case 2 -> APPRENTICE_CHOP_INTERVAL_TICKS;
             case 3 -> JOURNEYMAN_CHOP_INTERVAL_TICKS;
@@ -1428,7 +1434,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     }
 
     private int getMinLingerTicks(Villager worker) {
-        return switch (worker.getVillagerData().getLevel()) {
+        return switch (worker.getVillagerData().level()) {
             case 1 -> MIN_LINGER_TICKS;
             case 2 -> 360;
             case 3 -> 320;
@@ -1438,7 +1444,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     }
 
     private int getQuietLingerTicks(Villager worker) {
-        return switch (worker.getVillagerData().getLevel()) {
+        return switch (worker.getVillagerData().level()) {
             case 1 -> QUIET_LINGER_TICKS;
             case 2 -> 360;
             case 3 -> 320;
@@ -1448,7 +1454,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     }
 
     private int getMaxLingerTicks(Villager worker) {
-        return switch (worker.getVillagerData().getLevel()) {
+        return switch (worker.getVillagerData().level()) {
             case 1 -> MAX_LINGER_TICKS;
             case 2 -> 2800;
             case 3 -> 2400;
@@ -1458,7 +1464,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     }
 
     private float getWorkSpeed(Villager worker) {
-        return switch (worker.getVillagerData().getLevel()) {
+        return switch (worker.getVillagerData().level()) {
             case 1 -> NOVICE_WORK_SPEED;
             case 2 -> APPRENTICE_WORK_SPEED;
             case 3 -> JOURNEYMAN_WORK_SPEED;
@@ -1485,7 +1491,7 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
 
     private long getRemainingWorkTicks(ServerLevel level) {
         long dayTime = level.getDayTime() % 24000L;
-        long workEndTime = Schedule.WORK_START_TIME + Schedule.TOTAL_WORK_TIME;
+        long workEndTime = 11000;
         return workEndTime - dayTime;
     }
 
@@ -1603,8 +1609,8 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     }
 
     private Item getSaplingItem(String saplingItemId) {
-        net.minecraft.resources.ResourceLocation itemId = net.minecraft.resources.ResourceLocation.tryParse(saplingItemId);
-        return itemId == null ? Items.AIR : BuiltInRegistries.ITEM.get(itemId);
+        net.minecraft.resources.Identifier itemId = net.minecraft.resources.Identifier.tryParse(saplingItemId);
+        return itemId == null ? Items.AIR : BuiltInRegistries.ITEM.getValue(itemId);
     }
 
     private BlockItem getExpectedSaplingBlockItem(Item expectedSaplingItem) {
@@ -1820,138 +1826,99 @@ public class LumberjackWorkstationBlockEntity extends BlockEntity {
     }
 
     @Override
-    public void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.loadAdditional(tag, registries);
-        ListTag treeTags = tag.getList(HIGHLIGHT_TREES_KEY, Tag.TAG_COMPOUND);
-        List<CandidateTree> trees = new ArrayList<>(treeTags.size());
-        for (int i = 0; i < treeTags.size(); i++) {
-            CompoundTag treeTag = treeTags.getCompound(i);
-            BlockPos rootPos = BlockPos.of(treeTag.getLong(ROOT_POS_KEY));
-            long[] rootValues = treeTag.getLongArray(ROOT_POSITIONS_KEY);
-            long[] trunkValues = treeTag.getLongArray(TRUNK_POSITIONS_KEY);
-            long[] logValues = treeTag.getLongArray(LOG_POSITIONS_KEY);
-            long[] leafValues = treeTag.getLongArray(LEAF_POSITIONS_KEY);
-            List<BlockPos> rootPositions = new ArrayList<>(rootValues.length);
-            for (long value : rootValues) {
-                rootPositions.add(BlockPos.of(value));
-            }
-            List<BlockPos> trunkPositions = new ArrayList<>(trunkValues.length);
-            for (long value : trunkValues) {
-                trunkPositions.add(BlockPos.of(value));
-            }
-            List<BlockPos> logPositions = new ArrayList<>(logValues.length);
-            for (long value : logValues) {
-                logPositions.add(BlockPos.of(value));
-            }
-            List<BlockPos> leafPositions = new ArrayList<>(leafValues.length);
-            for (long value : leafValues) {
-                leafPositions.add(BlockPos.of(value));
-            }
-            String saplingItemId = treeTag.getString(SAPLING_ITEM_ID_KEY);
+    protected void loadAdditional(ValueInput input) {
+        super.loadAdditional(input);
+        List<CandidateTree> trees = new ArrayList<>();
+        for (ValueInput treeInput : input.childrenListOrEmpty(HIGHLIGHT_TREES_KEY)) {
+            BlockPos rootPos = treeInput.getLong(ROOT_POS_KEY).map(BlockPos::of).orElse(BlockPos.ZERO);
+            List<BlockPos> rootPositions = readPositions(treeInput, ROOT_POSITIONS_KEY);
+            List<BlockPos> trunkPositions = readPositions(treeInput, TRUNK_POSITIONS_KEY);
+            List<BlockPos> logPositions = readPositions(treeInput, LOG_POSITIONS_KEY);
+            List<BlockPos> leafPositions = readPositions(treeInput, LEAF_POSITIONS_KEY);
+            String saplingItemId = treeInput.getStringOr(SAPLING_ITEM_ID_KEY, "");
             trees.add(new CandidateTree(rootPos, rootPositions.isEmpty() ? List.of(rootPos) : rootPositions, trunkPositions, logPositions, leafPositions, saplingItemId));
         }
         highlightedTrees = trees;
 
-        long[] debugRootValues = tag.getLongArray(DEBUG_ROOT_BLOCKS_KEY);
-        List<BlockPos> rootBlocks = new ArrayList<>(debugRootValues.length);
-        for (long value : debugRootValues) {
-            rootBlocks.add(BlockPos.of(value));
-        }
-        debugRootBlocks = rootBlocks;
+        debugRootBlocks = readPositions(input, DEBUG_ROOT_BLOCKS_KEY);
 
         rememberedDropSites.clear();
-        ListTag siteTags = tag.getList(REMEMBERED_DROP_SITES_KEY, Tag.TAG_COMPOUND);
-        for (int i = 0; i < siteTags.size(); i++) {
-            CompoundTag siteTag = siteTags.getCompound(i);
+        for (ValueInput siteInput : input.childrenListOrEmpty(REMEMBERED_DROP_SITES_KEY)) {
             rememberedDropSites.add(new RememberedDropSite(
-                    BlockPos.of(siteTag.getLong(SITE_POS_KEY)),
-                    siteTag.getInt(SITE_AGE_TICKS_KEY),
-                    siteTag.getInt(SITE_COOLDOWN_TICKS_KEY),
-                    siteTag.getBoolean(SITE_VISITED_IN_SWEEP_KEY),
-                    siteTag.getInt(SITE_VISIT_COUNT_KEY)));
+                    siteInput.getLong(SITE_POS_KEY).map(BlockPos::of).orElse(BlockPos.ZERO),
+                    siteInput.getIntOr(SITE_AGE_TICKS_KEY, 0),
+                    siteInput.getIntOr(SITE_COOLDOWN_TICKS_KEY, 0),
+                    siteInput.getBooleanOr(SITE_VISITED_IN_SWEEP_KEY, false),
+                    siteInput.getIntOr(SITE_VISIT_COUNT_KEY, 0)));
         }
 
         pendingPlantings.clear();
-        ListTag plantingTags = tag.getList(PENDING_PLANTINGS_KEY, Tag.TAG_COMPOUND);
-        for (int i = 0; i < plantingTags.size(); i++) {
-            CompoundTag plantingTag = plantingTags.getCompound(i);
-            long[] rootValues = plantingTag.getLongArray(PLANTING_ROOT_POSITIONS_KEY);
-            List<BlockPos> rootPositions = new ArrayList<>(rootValues.length);
-            for (long value : rootValues) {
-                rootPositions.add(BlockPos.of(value));
-            }
-            BlockPos rootPos = rootPositions.isEmpty() ? BlockPos.of(plantingTag.getLong(ROOT_POS_KEY)) : rootPositions.get(0);
+        for (ValueInput plantingInput : input.childrenListOrEmpty(PENDING_PLANTINGS_KEY)) {
+            List<BlockPos> rootPositions = readPositions(plantingInput, PLANTING_ROOT_POSITIONS_KEY);
+            BlockPos rootPos = rootPositions.isEmpty() ? plantingInput.getLong(ROOT_POS_KEY).map(BlockPos::of).orElse(BlockPos.ZERO) : rootPositions.get(0);
             pendingPlantings.add(new PendingPlantingSite(
                     rootPos,
                     rootPositions.isEmpty() ? List.of(rootPos) : rootPositions,
-                    plantingTag.getString(PLANTING_SAPLING_ITEM_ID_KEY),
-                    plantingTag.getInt(SITE_AGE_TICKS_KEY)));
+                    plantingInput.getStringOr(PLANTING_SAPLING_ITEM_ID_KEY, ""),
+                    plantingInput.getIntOr(SITE_AGE_TICKS_KEY, 0)));
         }
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.saveAdditional(tag, registries);
-        ListTag treeTags = new ListTag();
+    protected void saveAdditional(ValueOutput output) {
+        super.saveAdditional(output);
+        ValueOutput.ValueOutputList treeOutputs = output.childrenList(HIGHLIGHT_TREES_KEY);
         for (CandidateTree tree : highlightedTrees) {
-            CompoundTag treeTag = new CompoundTag();
-            treeTag.putLong(ROOT_POS_KEY, tree.rootPos().asLong());
-            long[] rootValues = new long[tree.rootPositions().size()];
-            for (int i = 0; i < tree.rootPositions().size(); i++) {
-                rootValues[i] = tree.rootPositions().get(i).asLong();
-            }
-            long[] trunkValues = new long[tree.trunkPositions().size()];
-            for (int i = 0; i < tree.trunkPositions().size(); i++) {
-                trunkValues[i] = tree.trunkPositions().get(i).asLong();
-            }
-            long[] logValues = new long[tree.logPositions().size()];
-            for (int i = 0; i < tree.logPositions().size(); i++) {
-                logValues[i] = tree.logPositions().get(i).asLong();
-            }
-            long[] leafValues = new long[tree.leafPositions().size()];
-            for (int i = 0; i < tree.leafPositions().size(); i++) {
-                leafValues[i] = tree.leafPositions().get(i).asLong();
-            }
-            treeTag.putLongArray(ROOT_POSITIONS_KEY, rootValues);
-            treeTag.putLongArray(TRUNK_POSITIONS_KEY, trunkValues);
-            treeTag.putLongArray(LOG_POSITIONS_KEY, logValues);
-            treeTag.putLongArray(LEAF_POSITIONS_KEY, leafValues);
-            treeTag.putString(SAPLING_ITEM_ID_KEY, tree.saplingItemId());
-            treeTags.add(treeTag);
+            ValueOutput treeOutput = treeOutputs.addChild();
+            treeOutput.putLong(ROOT_POS_KEY, tree.rootPos().asLong());
+            writePositions(treeOutput, ROOT_POSITIONS_KEY, tree.rootPositions());
+            writePositions(treeOutput, TRUNK_POSITIONS_KEY, tree.trunkPositions());
+            writePositions(treeOutput, LOG_POSITIONS_KEY, tree.logPositions());
+            writePositions(treeOutput, LEAF_POSITIONS_KEY, tree.leafPositions());
+            treeOutput.putString(SAPLING_ITEM_ID_KEY, tree.saplingItemId());
         }
-        tag.put(HIGHLIGHT_TREES_KEY, treeTags);
-        long[] debugRootValues = new long[debugRootBlocks.size()];
-        for (int i = 0; i < debugRootBlocks.size(); i++) {
-            debugRootValues[i] = debugRootBlocks.get(i).asLong();
-        }
-        tag.putLongArray(DEBUG_ROOT_BLOCKS_KEY, debugRootValues);
+        writePositions(output, DEBUG_ROOT_BLOCKS_KEY, debugRootBlocks);
 
-        ListTag siteTags = new ListTag();
+        ValueOutput.ValueOutputList siteOutputs = output.childrenList(REMEMBERED_DROP_SITES_KEY);
         for (RememberedDropSite site : rememberedDropSites) {
-            CompoundTag siteTag = new CompoundTag();
-            siteTag.putLong(SITE_POS_KEY, site.pos().asLong());
-            siteTag.putInt(SITE_AGE_TICKS_KEY, site.ageTicks);
-            siteTag.putInt(SITE_COOLDOWN_TICKS_KEY, site.cooldownTicks);
-            siteTag.putBoolean(SITE_VISITED_IN_SWEEP_KEY, site.visitedInSweep);
-            siteTag.putInt(SITE_VISIT_COUNT_KEY, site.visitCount);
-            siteTags.add(siteTag);
+            ValueOutput siteOutput = siteOutputs.addChild();
+            siteOutput.putLong(SITE_POS_KEY, site.pos().asLong());
+            siteOutput.putInt(SITE_AGE_TICKS_KEY, site.ageTicks);
+            siteOutput.putInt(SITE_COOLDOWN_TICKS_KEY, site.cooldownTicks);
+            siteOutput.putBoolean(SITE_VISITED_IN_SWEEP_KEY, site.visitedInSweep);
+            siteOutput.putInt(SITE_VISIT_COUNT_KEY, site.visitCount);
         }
-        tag.put(REMEMBERED_DROP_SITES_KEY, siteTags);
 
-        ListTag plantingTags = new ListTag();
+        ValueOutput.ValueOutputList plantingOutputs = output.childrenList(PENDING_PLANTINGS_KEY);
         for (PendingPlantingSite site : pendingPlantings) {
-            CompoundTag plantingTag = new CompoundTag();
-            plantingTag.putLong(ROOT_POS_KEY, site.rootPos().asLong());
-            long[] rootValues = new long[site.rootPositions().size()];
-            for (int i = 0; i < site.rootPositions().size(); i++) {
-                rootValues[i] = site.rootPositions().get(i).asLong();
-            }
-            plantingTag.putLongArray(PLANTING_ROOT_POSITIONS_KEY, rootValues);
-            plantingTag.putString(PLANTING_SAPLING_ITEM_ID_KEY, site.saplingItemId());
-            plantingTag.putInt(SITE_AGE_TICKS_KEY, site.ageTicks);
-            plantingTags.add(plantingTag);
+            ValueOutput plantingOutput = plantingOutputs.addChild();
+            plantingOutput.putLong(ROOT_POS_KEY, site.rootPos().asLong());
+            writePositions(plantingOutput, PLANTING_ROOT_POSITIONS_KEY, site.rootPositions());
+            plantingOutput.putString(PLANTING_SAPLING_ITEM_ID_KEY, site.saplingItemId());
+            plantingOutput.putInt(SITE_AGE_TICKS_KEY, site.ageTicks);
         }
-        tag.put(PENDING_PLANTINGS_KEY, plantingTags);
+    }
+
+    private static List<BlockPos> readPositions(ValueInput input, String key) {
+        Optional<LongStream> legacyPositions = input.read(key, Codec.LONG_STREAM);
+        if (legacyPositions.isPresent()) {
+            return legacyPositions.get()
+                    .mapToObj(BlockPos::of)
+                    .toList();
+        }
+
+        List<BlockPos> positions = new ArrayList<>();
+        for (ValueInput positionInput : input.childrenListOrEmpty(key)) {
+            positionInput.getLong("pos").map(BlockPos::of).ifPresent(positions::add);
+        }
+        return positions;
+    }
+
+    private static void writePositions(ValueOutput output, String key, List<BlockPos> positions) {
+        ValueOutput.ValueOutputList positionOutputs = output.childrenList(key);
+        for (BlockPos position : positions) {
+            positionOutputs.addChild().putLong("pos", position.asLong());
+        }
     }
 
     @Override

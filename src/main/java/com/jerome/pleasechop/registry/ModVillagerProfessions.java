@@ -2,10 +2,14 @@ package com.jerome.pleasechop.registry;
 
 import com.google.common.collect.ImmutableSet;
 import com.jerome.pleasechop.PleaseChopMod;
+import java.util.Objects;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.entity.npc.VillagerProfession;
+import net.minecraft.world.entity.npc.villager.VillagerProfession;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -13,6 +17,8 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 public final class ModVillagerProfessions {
     private static final DeferredRegister<VillagerProfession> PROFESSIONS =
             DeferredRegister.create(Registries.VILLAGER_PROFESSION, PleaseChopMod.MOD_ID);
+    public static final ResourceKey<VillagerProfession> LUMBERJACK_KEY =
+            ResourceKey.create(Registries.VILLAGER_PROFESSION, Objects.requireNonNull(Identifier.tryBuild(PleaseChopMod.MOD_ID, "lumberjack")));
     private static final ImmutableSet<net.minecraft.world.item.Item> LUMBERJACK_REQUESTED_ITEMS = ImmutableSet.of(
             Items.OAK_LOG,
             Items.SPRUCE_LOG,
@@ -46,7 +52,7 @@ public final class ModVillagerProfessions {
 
     public static final DeferredHolder<VillagerProfession, VillagerProfession> LUMBERJACK = PROFESSIONS.register("lumberjack",
             () -> new VillagerProfession(
-                    "lumberjack",
+                    Component.translatable("entity.minecraft.villager.pleasechop.lumberjack"),
                     holder -> holder.is(ModPoiTypes.LUMBERJACK_KEY),
                     holder -> holder.is(ModPoiTypes.LUMBERJACK_KEY),
                     LUMBERJACK_REQUESTED_ITEMS,

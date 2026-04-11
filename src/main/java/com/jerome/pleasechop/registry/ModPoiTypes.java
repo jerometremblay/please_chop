@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.Set;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.ai.village.poi.PoiType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.IEventBus;
@@ -18,7 +18,7 @@ public final class ModPoiTypes {
             DeferredRegister.create(Registries.POINT_OF_INTEREST_TYPE, PleaseChopMod.MOD_ID);
 
     public static final ResourceKey<PoiType> LUMBERJACK_KEY =
-            ResourceKey.create(Registries.POINT_OF_INTEREST_TYPE, Objects.requireNonNull(ResourceLocation.tryBuild(PleaseChopMod.MOD_ID, "lumberjack")));
+            ResourceKey.create(Registries.POINT_OF_INTEREST_TYPE, Objects.requireNonNull(Identifier.tryBuild(PleaseChopMod.MOD_ID, "lumberjack")));
 
     public static final DeferredHolder<PoiType, PoiType> LUMBERJACK = POI_TYPES.register("lumberjack",
             () -> new PoiType(collectWorkstationStates(), 1, 1));

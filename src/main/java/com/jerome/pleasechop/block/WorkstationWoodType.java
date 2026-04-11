@@ -1,7 +1,7 @@
 package com.jerome.pleasechop.block;
 
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
@@ -48,7 +48,7 @@ public enum WorkstationWoodType {
     }
 
     public static WorkstationWoodType fromWorkstationBlock(Block block) {
-        ResourceLocation key = BuiltInRegistries.BLOCK.getKey(block);
+        Identifier key = BuiltInRegistries.BLOCK.getKey(block);
         if (key == null) {
             return null;
         }

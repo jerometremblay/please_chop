@@ -3,8 +3,8 @@
   "group": "pleasechop:lumberjack_workstation",
   "category": "misc",
   "ingredients": [
-    { "item": "minecraft:dark_oak_log" },
-    { "item": "minecraft:iron_axe" }
+    "minecraft:dark_oak_log",
+    "minecraft:iron_axe"
   ],
   "result": {
     "id": "pleasechop:dark_oak_lumberjack_workstation",
