@@ -26,6 +26,7 @@ public final class ModVillagerProfessions {
             Items.JUNGLE_LOG,
             Items.ACACIA_LOG,
             Items.DARK_OAK_LOG,
+            Items.PALE_OAK_LOG,
             Items.MANGROVE_LOG,
             Items.CHERRY_LOG,
             Items.CRIMSON_STEM,
@@ -38,6 +39,7 @@ public final class ModVillagerProfessions {
             Items.JUNGLE_LEAVES,
             Items.ACACIA_LEAVES,
             Items.DARK_OAK_LEAVES,
+            Items.PALE_OAK_LEAVES,
             Items.MANGROVE_LEAVES,
             Items.CHERRY_LEAVES,
             Items.OAK_SAPLING,
@@ -46,6 +48,7 @@ public final class ModVillagerProfessions {
             Items.JUNGLE_SAPLING,
             Items.ACACIA_SAPLING,
             Items.DARK_OAK_SAPLING,
+            Items.PALE_OAK_SAPLING,
             Items.MANGROVE_PROPAGULE,
             Items.CHERRY_SAPLING
     );

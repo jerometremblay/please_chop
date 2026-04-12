@@ -121,6 +121,7 @@ public enum WorkstationWoodType {
     public Item specialResourceItem() {
         return switch (this) {
             case JUNGLE -> Items.COCOA_BEANS;
+            case PALE_OAK -> Items.RESIN_CLUMP;
             default -> null;
         };
     }
