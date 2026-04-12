@@ -23,6 +23,7 @@ public final class ModBlocks {
     public static final DeferredBlock<Block> JUNGLE_LUMBERJACK_WORKSTATION = registerWorkstation(WorkstationWoodType.JUNGLE);
     public static final DeferredBlock<Block> ACACIA_LUMBERJACK_WORKSTATION = registerWorkstation(WorkstationWoodType.ACACIA);
     public static final DeferredBlock<Block> DARK_OAK_LUMBERJACK_WORKSTATION = registerWorkstation(WorkstationWoodType.DARK_OAK);
+    public static final DeferredBlock<Block> PALE_OAK_LUMBERJACK_WORKSTATION = registerWorkstation(WorkstationWoodType.PALE_OAK);
     public static final DeferredBlock<Block> MANGROVE_LUMBERJACK_WORKSTATION = registerWorkstation(WorkstationWoodType.MANGROVE);
     public static final DeferredBlock<Block> CHERRY_LUMBERJACK_WORKSTATION = registerWorkstation(WorkstationWoodType.CHERRY);
 
@@ -32,6 +33,7 @@ public final class ModBlocks {
     public static final DeferredItem<BlockItem> JUNGLE_LUMBERJACK_WORKSTATION_ITEM = registerWorkstationItem(WorkstationWoodType.JUNGLE, JUNGLE_LUMBERJACK_WORKSTATION);
     public static final DeferredItem<BlockItem> ACACIA_LUMBERJACK_WORKSTATION_ITEM = registerWorkstationItem(WorkstationWoodType.ACACIA, ACACIA_LUMBERJACK_WORKSTATION);
     public static final DeferredItem<BlockItem> DARK_OAK_LUMBERJACK_WORKSTATION_ITEM = registerWorkstationItem(WorkstationWoodType.DARK_OAK, DARK_OAK_LUMBERJACK_WORKSTATION);
+    public static final DeferredItem<BlockItem> PALE_OAK_LUMBERJACK_WORKSTATION_ITEM = registerWorkstationItem(WorkstationWoodType.PALE_OAK, PALE_OAK_LUMBERJACK_WORKSTATION);
     public static final DeferredItem<BlockItem> MANGROVE_LUMBERJACK_WORKSTATION_ITEM = registerWorkstationItem(WorkstationWoodType.MANGROVE, MANGROVE_LUMBERJACK_WORKSTATION);
     public static final DeferredItem<BlockItem> CHERRY_LUMBERJACK_WORKSTATION_ITEM = registerWorkstationItem(WorkstationWoodType.CHERRY, CHERRY_LUMBERJACK_WORKSTATION);
 
@@ -42,6 +44,7 @@ public final class ModBlocks {
             JUNGLE_LUMBERJACK_WORKSTATION,
             ACACIA_LUMBERJACK_WORKSTATION,
             DARK_OAK_LUMBERJACK_WORKSTATION,
+            PALE_OAK_LUMBERJACK_WORKSTATION,
             MANGROVE_LUMBERJACK_WORKSTATION,
             CHERRY_LUMBERJACK_WORKSTATION
     );
@@ -53,6 +56,7 @@ public final class ModBlocks {
             JUNGLE_LUMBERJACK_WORKSTATION_ITEM,
             ACACIA_LUMBERJACK_WORKSTATION_ITEM,
             DARK_OAK_LUMBERJACK_WORKSTATION_ITEM,
+            PALE_OAK_LUMBERJACK_WORKSTATION_ITEM,
             MANGROVE_LUMBERJACK_WORKSTATION_ITEM,
             CHERRY_LUMBERJACK_WORKSTATION_ITEM
     );

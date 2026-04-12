@@ -13,6 +13,7 @@ public enum WorkstationWoodType {
     JUNGLE("jungle", "minecraft:block/jungle_log", "minecraft:block/jungle_log_top"),
     ACACIA("acacia", "minecraft:block/acacia_log", "minecraft:block/acacia_log_top"),
     DARK_OAK("dark_oak", "minecraft:block/dark_oak_log", "minecraft:block/dark_oak_log_top"),
+    PALE_OAK("pale_oak", "minecraft:block/pale_oak_log", "minecraft:block/pale_oak_log_top"),
     MANGROVE("mangrove", "minecraft:block/mangrove_log", "minecraft:block/mangrove_log_top"),
     CHERRY("cherry", "minecraft:block/cherry_log", "minecraft:block/cherry_log_top");
 
@@ -69,6 +70,7 @@ public enum WorkstationWoodType {
             case JUNGLE -> Items.JUNGLE_LOG;
             case ACACIA -> Items.ACACIA_LOG;
             case DARK_OAK -> Items.DARK_OAK_LOG;
+            case PALE_OAK -> Items.PALE_OAK_LOG;
             case MANGROVE -> Items.MANGROVE_LOG;
             case CHERRY -> Items.CHERRY_LOG;
         };
@@ -82,6 +84,7 @@ public enum WorkstationWoodType {
             case JUNGLE -> Items.STRIPPED_JUNGLE_LOG;
             case ACACIA -> Items.STRIPPED_ACACIA_LOG;
             case DARK_OAK -> Items.STRIPPED_DARK_OAK_LOG;
+            case PALE_OAK -> Items.STRIPPED_PALE_OAK_LOG;
             case MANGROVE -> Items.STRIPPED_MANGROVE_LOG;
             case CHERRY -> Items.STRIPPED_CHERRY_LOG;
         };
@@ -95,6 +98,7 @@ public enum WorkstationWoodType {
             case JUNGLE -> Items.JUNGLE_LEAVES;
             case ACACIA -> Items.ACACIA_LEAVES;
             case DARK_OAK -> Items.DARK_OAK_LEAVES;
+            case PALE_OAK -> Items.PALE_OAK_LEAVES;
             case MANGROVE -> Items.MANGROVE_LEAVES;
             case CHERRY -> Items.CHERRY_LEAVES;
         };
@@ -108,6 +112,7 @@ public enum WorkstationWoodType {
             case JUNGLE -> Items.JUNGLE_SAPLING;
             case ACACIA -> Items.ACACIA_SAPLING;
             case DARK_OAK -> Items.DARK_OAK_SAPLING;
+            case PALE_OAK -> Items.PALE_OAK_SAPLING;
             case MANGROVE -> Items.MANGROVE_PROPAGULE;
             case CHERRY -> Items.CHERRY_SAPLING;
         };

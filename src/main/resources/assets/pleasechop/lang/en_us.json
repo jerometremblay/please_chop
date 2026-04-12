@@ -21,6 +21,7 @@
   "block.pleasechop.jungle_lumberjack_workstation": "Jungle Lumberjack Workstation",
   "block.pleasechop.acacia_lumberjack_workstation": "Acacia Lumberjack Workstation",
   "block.pleasechop.dark_oak_lumberjack_workstation": "Dark Oak Lumberjack Workstation",
+  "block.pleasechop.pale_oak_lumberjack_workstation": "Pale Oak Lumberjack Workstation",
   "block.pleasechop.mangrove_lumberjack_workstation": "Mangrove Lumberjack Workstation",
   "block.pleasechop.cherry_lumberjack_workstation": "Cherry Lumberjack Workstation",
   "item.pleasechop.oak_lumberjack_workstation": "Oak Lumberjack Workstation",
@@ -29,6 +30,7 @@
   "item.pleasechop.jungle_lumberjack_workstation": "Jungle Lumberjack Workstation",
   "item.pleasechop.acacia_lumberjack_workstation": "Acacia Lumberjack Workstation",
   "item.pleasechop.dark_oak_lumberjack_workstation": "Dark Oak Lumberjack Workstation",
+  "item.pleasechop.pale_oak_lumberjack_workstation": "Pale Oak Lumberjack Workstation",
   "item.pleasechop.mangrove_lumberjack_workstation": "Mangrove Lumberjack Workstation",
   "item.pleasechop.cherry_lumberjack_workstation": "Cherry Lumberjack Workstation",
   "entity.minecraft.villager.pleasechop.lumberjack": "Lumberjack"

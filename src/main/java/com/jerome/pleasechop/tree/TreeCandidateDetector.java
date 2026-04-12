@@ -408,7 +408,7 @@ public final class TreeCandidateDetector {
     }
 
     private static List<BlockPos> collectWideTrunk(ServerLevel level, List<BlockPos> rootPositions, Block logBlock, WideTreeType wideTreeType) {
-        if (wideTreeType == WideTreeType.DARK_OAK) {
+        if (wideTreeType == WideTreeType.DARK_OAK || wideTreeType == WideTreeType.PALE_OAK) {
             return collectDarkOakTrunk(level, rootPositions, logBlock);
         }
 
@@ -861,6 +861,9 @@ public final class TreeCandidateDetector {
         if (block == Blocks.DARK_OAK_LOG) {
             return Blocks.DARK_OAK_LEAVES;
         }
+        if (block == Blocks.PALE_OAK_LOG) {
+            return Blocks.PALE_OAK_LEAVES;
+        }
         if (block == Blocks.MANGROVE_LOG) {
             return Blocks.MANGROVE_LEAVES;
         }
@@ -929,7 +932,7 @@ public final class TreeCandidateDetector {
                     }
                     return false;
                 }
-                if (wideTreeType == WideTreeType.DARK_OAK) {
+                if (wideTreeType == WideTreeType.DARK_OAK || wideTreeType == WideTreeType.PALE_OAK) {
                     if (neighborState.is(expectedLeafBlock) || neighborState.is(rootBlock)) {
                         continue;
                     }
@@ -965,6 +968,9 @@ public final class TreeCandidateDetector {
         if (block == Blocks.DARK_OAK_LOG) {
             return WideTreeType.DARK_OAK;
         }
+        if (block == Blocks.PALE_OAK_LOG) {
+            return WideTreeType.PALE_OAK;
+        }
         return null;
     }
 
@@ -986,6 +992,9 @@ public final class TreeCandidateDetector {
         }
         if (block == Blocks.DARK_OAK_LOG) {
             return Items.DARK_OAK_SAPLING;
+        }
+        if (block == Blocks.PALE_OAK_LOG) {
+            return Items.PALE_OAK_SAPLING;
         }
         if (block == Blocks.MANGROVE_LOG) {
             return Items.MANGROVE_PROPAGULE;
@@ -1015,6 +1024,7 @@ public final class TreeCandidateDetector {
     private enum WideTreeType {
         SPRUCE,
         JUNGLE,
-        DARK_OAK
+        DARK_OAK,
+        PALE_OAK
     }
 }
